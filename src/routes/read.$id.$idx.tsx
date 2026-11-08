@@ -144,8 +144,8 @@ function Reader() {
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-4 text-xs text-muted-foreground">
-            <label>Speed {rate.toFixed(1)}×<Slider min={0.5} max={2.5} step={0.1} value={[rate]} onValueChange={([v]) => setRate(v)} /></label>
-            <label>Text size {fontSize}px<Slider min={14} max={30} step={1} value={[fontSize]} onValueChange={([v]) => setFontSize(v)} /></label>
+            <label>Speed {rate.toFixed(1)}×<Slider min={0.5} max={2.5} step={0.1} value={[rate]} onValueChange={(v) => setRate(v[0] ?? 1)} /></label>
+            <label>Text size {fontSize}px<Slider min={14} max={30} step={1} value={[fontSize]} onValueChange={(v) => setFontSize(v[0] ?? 19)} /></label>
           </div>
         </div>
       </footer>
