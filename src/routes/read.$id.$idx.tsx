@@ -10,6 +10,7 @@ import { useReaderPreferences } from "@/lib/reader-preferences";
 import { TranslateSettings } from "@/components/TranslateSettings";
 import { requireSiteAccess } from "@/lib/gate-loader";
 import { LockSite } from "@/components/LockSite";
+import { browserTranslatedLang, hasChinese, speechLang, spokenText } from "@/lib/speech-text";
 
 export const Route = createFileRoute("/read/$id/$idx")({
   beforeLoad: requireSiteAccess,
@@ -79,29 +80,49 @@ function Reader() {
   }, [id, i]);
 
   const paras = ch ? (showEn && ch.translated ? ch.translated : ch.paragraphs) : [];
-  const lang = showEn && ch?.translated ? "en" : "zh";
+  // Detect the browser's own "Translate this page" so read-aloud follows what is on screen.
+  const [browserLang, setBrowserLang] = useState<string | null>(null);
+  useEffect(() => {
+    const root = document.documentElement;
+    const check = () => setBrowserLang(browserTranslatedLang(root));
+    check();
+    const obs = new MutationObserver(check);
+    obs.observe(root, { attributes: true, attributeFilter: ["class", "lang"] });
+    return () => obs.disconnect();
+  }, []);
+  const lang = showEn && ch?.translated ? "en" : browserLang ?? "zh";
+  const speakTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-continue TTS on next chapter
   useEffect(() => { if (ch && autoNext.current) { autoNext.current = false; speakFrom(0); } }, [ch]); // eslint-disable-line
 
-  const pickVoice = () => {
+  const pickVoice = (want: string) => {
     const v = voices.find((x) => x.name === voiceName);
-    if (v) return v;
-    const pool = voices.filter((x) => x.lang.toLowerCase().startsWith(lang));
+    if (v && v.lang.toLowerCase().startsWith(want)) return v;
+    const pool = voices.filter((x) => x.lang.toLowerCase().startsWith(want));
     return pool.find((x) => /google/i.test(x.name)) ?? pool[0];
   };
 
-  const speakFrom = (start: number) => {
+  const speakFrom = (start: number, attempt = 0) => {
     speechSynthesis.cancel();
+    if (speakTimer.current) { clearTimeout(speakTimer.current); speakTimer.current = null; }
     if (start >= paras.length) {
       if (book && i + 1 < book.chapters.length) { autoNext.current = true; nav({ to: "/read/$id/$idx", params: { id, idx: String(i + 1) } }); }
       else setSpeaking("off");
       return;
     }
-    const u = new SpeechSynthesisUtterance(paras[start]);
-    const v = pickVoice();
+    const text = spokenText(document.getElementById(`p-${start}`), paras[start] ?? "");
+    // The browser translates new text a moment after it appears; wait briefly instead of reading Chinese.
+    if (browserLang && browserLang !== "zh" && hasChinese(text) && attempt < 10) {
+      setCur(start); setSpeaking("play");
+      speakTimer.current = setTimeout(() => speakFrom(start, attempt + 1), 300);
+      return;
+    }
+    const want = speechLang(text, browserLang);
+    const u = new SpeechSynthesisUtterance(text);
+    const v = pickVoice(want);
     if (v) u.voice = v;
-    u.lang = v?.lang ?? (lang === "en" ? "en-US" : "zh-CN");
+    u.lang = v?.lang ?? (want === "zh" ? "zh-CN" : want === "en" ? "en-US" : want);
     u.rate = rate;
     u.onstart = () => { setCur(start); document.getElementById(`p-${start}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); };
     u.onend = () => speakFrom(start + 1);
@@ -114,7 +135,7 @@ function Reader() {
     else if (speaking === "pause") { speechSynthesis.resume(); setSpeaking("play"); }
     else speakFrom(Math.max(cur, 0));
   };
-  const stop = () => { speechSynthesis.cancel(); setSpeaking("off"); setCur(-1); };
+  const stop = () => { if (speakTimer.current) { clearTimeout(speakTimer.current); speakTimer.current = null; } speechSynthesis.cancel(); setSpeaking("off"); setCur(-1); };
 
   const translate = async () => {
     if (!book || !ch) return;
@@ -136,10 +157,10 @@ function Reader() {
         <TranslateSettings />
         <LockSite />
         <Button variant={showEn ? "default" : "outline"} size="sm" onClick={translate} disabled={!ch || translating}>
-          {translating ? <Loader2 className="animate-spin" /> : <Languages />} {ch?.translated ? (showEn ? "中文" : "English") : "Translate"}
+          {translating ? <Loader2 className="animate-spin" /> : <Languages />} <span>{ch?.translated ? (showEn ? "中文" : "English") : "Translate"}</span>
         </Button>
       </header>
-      <article className="font-reading mx-auto max-w-2xl px-5 py-6 leading-loose" style={{ fontSize }}>
+      <article lang={showEn && ch?.translated ? "en" : "zh-CN"} className="font-reading mx-auto max-w-2xl px-5 py-6 leading-loose" style={{ fontSize }}>
         {translating && <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Translating to English…</div>}
         {!ch && !err && <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="animate-spin" /> Loading chapter…</div>}
         {err && <p className="text-destructive">{err}</p>}
