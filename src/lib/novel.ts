@@ -1,9 +1,14 @@
 import { readSaved as get, writeSaved as set, removeSaved as del, savedKeys as keys, requestPersistentStorage } from "./storage";
 import { splitTranslationText } from "./translation-utils";
 import { fetchPage, translateText } from "./remote.functions";
+import { googleTranslate } from "./google-translate";
+import { hasChinese } from "./speech-text";
 
 export type ChapterRef = { title: string; url: string };
-export type Book = { id: string; url: string; title: string; author?: string | undefined; summary: string; cover?: string | undefined; chapters: ChapterRef[]; addedAt: number; lastRead?: number | undefined };
+export type Book = { id: string; url: string; title: string; author?: string | undefined; summary: string; cover?: string | undefined; chapters: ChapterRef[]; addedAt: number; lastRead?: number | undefined; titleEn?: string | undefined; customTitle?: string | undefined };
+
+/** Name shown for a book: the reader's own name, else the English translation, else the original. */
+export const bookTitle = (b: Pick<Book, "title" | "titleEn" | "customTitle">) => b.customTitle?.trim() || b.titleEn?.trim() || b.title;
 export type Chapter = { title: string; paragraphs: string[]; translated?: string[] };
 
 function decode(b64: string, contentType: string) {
@@ -68,8 +73,10 @@ export async function importBook(url: string): Promise<Book> {
   const book: Book = { id: btoa(unescape(encodeURIComponent(base))).replace(/[^a-z0-9]/gi, "").slice(-24), url: base, title, author, summary, cover, chapters, addedAt: Date.now() };
   const existing = await get<Book>(`book:${book.id}`);
   if (existing?.lastRead !== undefined) book.lastRead = existing.lastRead;
+  if (existing?.customTitle) book.customTitle = existing.customTitle;
+  if (existing?.titleEn && existing.title === book.title) book.titleEn = existing.titleEn;
   await set(`book:${book.id}`, book);
-  return book;
+  return ensureEnglishTitle(book);
 }
 
 function extractContent(doc: Document) {
@@ -112,6 +119,39 @@ export async function getChapter(book: Book, idx: number, forceNetwork = false):
   return ch;
 }
 
+// Google translation runs from the reader's browser first (their own quota), then via the server.
+export async function translateWithGoogle(text: string): Promise<string> {
+  try {
+    return await googleTranslate(text);
+  } catch (browserError) {
+    try {
+      const r = await translateText({ data: { text, engine: "google" } });
+      if (r.text.trim()) return r.text;
+    } catch { /* report the browser error below */ }
+    throw browserError;
+  }
+}
+
+/** Adds an English library title once; keeps the Chinese title if translation is unavailable. */
+export async function ensureEnglishTitle(book: Book): Promise<Book> {
+  if (book.titleEn || !hasChinese(book.title)) return book;
+  try {
+    const titleEn = (await translateWithGoogle(book.title)).trim();
+    if (!titleEn) return book;
+    const latest = (await get<Book>(`book:${book.id}`)) ?? book;
+    const updated = { ...latest, titleEn };
+    await set(`book:${book.id}`, updated);
+    return updated;
+  } catch { return book; }
+}
+
+export async function renameBook(book: Book, name: string): Promise<Book> {
+  const latest = (await get<Book>(`book:${book.id}`)) ?? book;
+  const updated: Book = { ...latest, customTitle: name.trim() || undefined };
+  await set(`book:${book.id}`, updated);
+  return updated;
+}
+
 export const isCached = async (book: Book, idx: number) => !!(await get(`ch:${book.id}:${idx}`));
 
 // One browser-wide queue prevents chapter opens and bulk jobs from flooding Google.
@@ -133,8 +173,8 @@ export function translateChapter(book: Book, idx: number, ch: Chapter, settings 
     for (let n = out.length; n < chunks.length; n++) {
       const chunk = chunks[n];
       if (chunk === undefined) continue;
-      if (settings.engine === "google") await new Promise<void>((resolve) => setTimeout(resolve, 500));
-      const r = await translateText({ data: { text: chunk, ...settings } });
+      if (settings.engine === "google" && n > 0) await new Promise<void>((resolve) => setTimeout(resolve, 500));
+      const r = settings.engine === "google" ? { text: await translateWithGoogle(chunk) } : await translateText({ data: { text: chunk, ...settings } });
       if (!r.text.trim()) throw new Error("No translation returned. Your original chapter is saved.");
       out.push(r.text);
       await set(checkpointKey, { source, output: out });
@@ -173,4 +213,8 @@ export function getTranslateSettings(): TranslateSettings {
     return { engine: s.engine === "gemini" ? "gemini" : "google", model: typeof s.model === "string" ? s.model : d.model, apiKey: typeof s.apiKey === "string" ? s.apiKey : "", auto: typeof s.auto === "boolean" ? s.auto : true };
   } catch { return d; }
 }
-export const saveTranslateSettings = (s: TranslateSettings) => localStorage.setItem("translate-settings", JSON.stringify(s));
+export const TRANSLATE_SETTINGS_EVENT = "inkleaf:translate-settings";
+export const saveTranslateSettings = (s: TranslateSettings) => {
+  localStorage.setItem("translate-settings", JSON.stringify(s));
+  window.dispatchEvent(new Event(TRANSLATE_SETTINGS_EVENT));
+};

@@ -5,8 +5,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
-import { deleteBook, getBook, getChapter, getTranslateSettings, importBook, isCached, saveBook, translateChapter, type Book, type Chapter, type TranslateSettings as TranslationConfig } from "@/lib/novel";
-import { TranslateSettings } from "@/components/TranslateSettings";
+import { bookTitle, deleteBook, getBook, getChapter, getTranslateSettings, importBook, isCached, saveBook, translateChapter, type Book, type Chapter } from "@/lib/novel";
+import { AutoTranslateSwitch, TranslateSettings, useTranslateSettings } from "@/components/TranslateSettings";
 import { translationEngineLabel } from "@/lib/translation-utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { buildEpub, buildTxt, downloadBlob } from "@/lib/export";
@@ -35,9 +35,8 @@ function BookPage() {
   const [cached, setCached] = useState<boolean[]>([]);
   const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const [english, setEnglish] = useState(false);
-  const [settings, setSettings] = useState<TranslationConfig | null>(null);
+  const [settings] = useTranslateSettings();
   const [confirmTranslation, setConfirmTranslation] = useState(false);
-  useEffect(() => { setSettings(getTranslateSettings()); }, []);
   const [ready, setReady] = useState<{ blob: Blob; name: string } | null>(null);
 
   const refreshCache = async (b: Book) => setCached(await Promise.all(b.chapters.map((_, i) => isCached(b, i))));
@@ -70,12 +69,14 @@ function BookPage() {
       <div className="mt-4 flex gap-4">
         {book.cover && <img src={book.cover} alt="" className="h-36 w-24 rounded object-cover shadow" />}
         <div>
-          <h1 className="font-display text-2xl font-bold">{book.title}</h1>
+          <h1 className="font-display text-2xl font-bold">{bookTitle(book)}</h1>
+          {bookTitle(book) !== book.title && <p className="text-sm text-muted-foreground">{book.title}</p>}
           {book.author && <p className="text-sm text-muted-foreground">{book.author}</p>}
           <p className="mt-1 text-xs text-muted-foreground">{book.chapters.length} chapters · {cachedCount} saved offline</p>
           <Button className="mt-3" onClick={() => nav({ to: "/read/$id/$idx", params: { id, idx: String(book.lastRead ?? 0) } })}>
             {book.lastRead !== undefined ? `Continue ch. ${book.lastRead + 1}` : "Start reading"}
           </Button>
+          <AutoTranslateSwitch className="mt-3" />
         </div>
       </div>
       <p className="font-reading mt-4 whitespace-pre-line text-sm leading-relaxed">{book.summary}</p>
@@ -83,9 +84,9 @@ function BookPage() {
       <section className="mt-6 space-y-3 rounded-lg border bg-card p-4">
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" disabled={!!progress} onClick={() => run(async () => { await fetchAll(false); toast.success("All chapters saved for offline reading"); })}><Download /> Save all offline</Button>
-          <Button variant="secondary" size="sm" disabled={!!progress || !settings} onClick={() => { setSettings(getTranslateSettings()); setConfirmTranslation(true); }}><Languages /> Translate all · {settings ? translationEngineLabel(settings) : "…"}</Button>
-          <TranslateSettings onChange={setSettings} />
-          <Button variant="secondary" size="sm" disabled={!!progress} onClick={() => run(async () => { const b = await importBook(book.url); b.lastRead = book.lastRead; await saveBook(b); setBook(b); refreshCache(b); toast.success("Contents refreshed"); })}><RefreshCw /> Refresh</Button>
+          <Button variant="secondary" size="sm" disabled={!!progress || !settings} onClick={() => setConfirmTranslation(true)}><Languages /> Translate all · {settings ? translationEngineLabel(settings) : "…"}</Button>
+          <TranslateSettings />
+          <Button variant="secondary" size="sm" disabled={!!progress} onClick={() => run(async () => { const b = await importBook(book.url); b.lastRead = book.lastRead; b.customTitle = book.customTitle; await saveBook(b); setBook(b); refreshCache(b); toast.success("Contents refreshed"); })}><RefreshCw /> Refresh</Button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" disabled={!!progress} onClick={() => exportAs("epub")}><FileText /> Export EPUB</Button>

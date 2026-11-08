@@ -28,7 +28,7 @@ function Unlock() {
   return <main className="mx-auto flex min-h-svh max-w-sm flex-col justify-center px-6 py-12">
     <LockKeyhole className="mb-5 h-8 w-8 text-primary" />
     <h1 className="font-display text-4xl font-bold text-primary">Inkleaf</h1>
-    <form className="mt-8 space-y-4" onSubmit={async (event) => {
+    <form method="post" className="mt-8 space-y-4" onSubmit={async (event) => {
       event.preventDefault(); setError(""); setBusy(true);
       const form = event.currentTarget;
       const password = new FormData(form).get("password");

@@ -32,5 +32,5 @@ use the editor.
 - Keep browser reading preferences in the root-mounted preferences provider; hydrate before applying them and write only explicit changes to prevent startup overwrites.
 - Keep books, chapters and translation checkpoints behind the storage helper with IndexedDB primary storage and best-effort localStorage recovery copies; browser storage remains origin-specific.
 - Serialize chapter translation in the browser and capture settings once per bulk job so engine changes cannot alter an active job.
-- Isolate Google translation endpoint fallback and bounded backoff in its server-only helper; retry only transient failures and preserve completed chunks.
+- Isolate Google translation endpoint fallback and bounded backoff in one shared helper; call it from the browser first (reader's own IP avoids shared-server throttling) and fall back to the server function; retry only transient failures and preserve completed chunks.
 - Verify shared site access with a server-only password comparison and encrypted HttpOnly session; guard every content route and every import/translation handler, without deleting local reader data on lock.

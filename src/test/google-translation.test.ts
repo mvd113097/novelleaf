@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { googleTranslate } from "@/lib/google-translate.server";
+import { googleTranslate } from "@/lib/google-translate";
 import { splitTranslationText, translationEngineLabel } from "@/lib/translation-utils";
 
 describe("Google translation recovery", () => {
@@ -14,7 +14,8 @@ describe("Google translation recovery", () => {
     const request = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response("busy", { status: 429, headers: { "Retry-After": "2" } })).mockResolvedValueOnce(Response.json([[["Hello", "你好"]]]));
     expect(await googleTranslate("你好", wait, request)).toBe("Hello");
     expect(wait).toHaveBeenCalledWith(2000);
-    expect(String(request.mock.calls[1]?.[0])).toContain("translate.google.com");
+    expect(String(request.mock.calls[0]?.[0])).toContain("clients5.google.com");
+    expect(String(request.mock.calls[1]?.[0])).toContain("translate.googleapis.com");
   });
   it("uses exponential backoff and stops after three throttled endpoints", async () => {
     const wait = vi.fn(async (_ms: number) => {});
@@ -31,5 +32,13 @@ describe("Google translation recovery", () => {
   it("identifies the selected engine for bulk translation", () => {
     expect(translationEngineLabel({ engine: "google", model: "google/gemini-3.1-flash-lite" })).toBe("Google Translate");
     expect(translationEngineLabel({ engine: "gemini", model: "google/gemini-3.1-flash-lite" })).toBe("Gemini · gemini-3.1-flash-lite");
+  });
+});
+describe("library titles", () => {
+  it("shows the reader's own name first, then the English title, then the original", async () => {
+    const { bookTitle } = await import("@/lib/novel");
+    expect(bookTitle({ title: "开局忽悠煤老板", titleEn: "Fooling the Coal Boss", customTitle: "Coal Boss" })).toBe("Coal Boss");
+    expect(bookTitle({ title: "开局忽悠煤老板", titleEn: "Fooling the Coal Boss", customTitle: "  " })).toBe("Fooling the Coal Boss");
+    expect(bookTitle({ title: "开局忽悠煤老板" })).toBe("开局忽悠煤老板");
   });
 });

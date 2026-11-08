@@ -6,3 +6,6 @@
 - [x] Add a server-verified shared password and encrypted unlock session.
 - [x] Protect all reading pages and import/translation services; add a lock button.
 - [x] Verify incorrect passwords, unlocking, reloads and locking again.
+- [ ] Fix "Google Translate busy" by translating from the reader's own browser first, with server fallback.
+- [ ] Make auto-translate easy to turn off so chapters open in Chinese for the browser's translator.
+- [ ] Show library titles in English and let the reader rename a book.

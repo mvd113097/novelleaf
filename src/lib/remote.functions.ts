@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { googleTranslate } from "./google-translate.server";
+import { googleTranslate } from "./google-translate";
 import { requireUnlocked } from "./gate.server";
 
 export const ALLOWED_HOSTS = ["52shuku.net", "52shuku.vip", "dmxs.org", "fuxsw.com", "fuxb.com", "fuxb.net", "fuxb.org", "fuxb.cc"];

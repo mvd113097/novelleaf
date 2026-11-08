@@ -72,7 +72,7 @@ function Reader() {
             finally { setTranslating(false); }
           }
           if (alive && c.translated) setShowEn(true);
-        }
+        } else if (alive) setShowEn(false); // Auto-translate off: show the original so the browser's translator can be used.
       }
       catch (e) { if (alive) setErr(e instanceof Error ? e.message : "Could not load chapter (offline?)"); }
     }).catch((e) => { if (alive) setErr(e instanceof Error ? e.message : "Could not read saved book"); });
