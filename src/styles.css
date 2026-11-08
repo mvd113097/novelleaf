@@ -176,3 +176,5 @@
 body { font-family: "Source Sans 3", system-ui, sans-serif; }
 .font-reading { font-family: "Lora", "Noto Serif SC", serif; }
 .font-display { font-family: "Lora", serif; }
+:root { --player: oklch(0.2 0.005 60); --player-foreground: oklch(0.96 0 0); }
+@theme inline { --color-player: var(--player); --color-player-foreground: var(--player-foreground); }

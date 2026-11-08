@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Languages, List, Loader2, Pause, Play, Square } from "lucide-react";
+import { FastForward, Rewind, ChevronLeft, ChevronRight, Languages, List, Loader2, Pause, Play, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -99,6 +99,7 @@ function Reader() {
     u.rate = rate;
     u.onstart = () => { setCur(start); document.getElementById(`p-${start}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); };
     u.onend = () => speakFrom(start + 1);
+    setCur(start);
     speechSynthesis.speak(u);
     setSpeaking("play");
   };
@@ -137,7 +138,7 @@ function Reader() {
         {err && <p className="text-destructive">{err}</p>}
         {ch && <h1 className="mb-6 font-display text-2xl font-bold">{ch.title}</h1>}
         {paras.map((p, k) => (
-          <p key={k} id={`p-${k}`} onDoubleClick={() => speakFrom(k)} className={`mb-4 rounded px-1 transition-colors ${k === cur ? "bg-accent" : ""}`}>{p}</p>
+          <p key={k} id={`p-${k}`} onClick={() => speakFrom(k)} className={`mb-4 cursor-pointer rounded px-1 transition-colors ${k === cur ? "bg-accent" : ""}`}>{p}</p>
         ))}
         {ch && paras.length === 0 && <p className="text-muted-foreground">No text found on this page.</p>}
         <div className="mt-10 flex justify-between">
@@ -146,11 +147,21 @@ function Reader() {
         </div>
       </article>
 
+      {speaking !== "off" ? (
+      <footer className="fixed inset-x-0 bottom-0 z-20 bg-player text-player-foreground pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-auto grid max-w-md grid-cols-4 place-items-center py-4">
+          <button aria-label="Previous paragraph" onClick={() => speakFrom(Math.max(cur - 1, 0))} className="p-3"><Rewind className="h-7 w-7" fill="currentColor" /></button>
+          <button aria-label="Stop" onClick={stop} className="p-3"><Square className="h-6 w-6" fill="currentColor" /></button>
+          <button aria-label={speaking === "play" ? "Pause" : "Play"} onClick={toggle} className="p-3">{speaking === "play" ? <Pause className="h-7 w-7" fill="currentColor" /> : <Play className="h-7 w-7" fill="currentColor" />}</button>
+          <button aria-label="Next paragraph" onClick={() => speakFrom(cur + 1)} className="p-3"><FastForward className="h-7 w-7" fill="currentColor" /></button>
+        </div>
+      </footer>
+      ) : (
       <footer className="fixed inset-x-0 bottom-0 z-10 border-t bg-card/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto max-w-2xl space-y-3">
           <div className="flex items-center gap-2">
-            <Button size="icon" onClick={toggle} disabled={!paras.length} aria-label="Play or pause">{speaking === "play" ? <Pause /> : <Play />}</Button>
-            <Button size="icon" variant="outline" onClick={stop} disabled={speaking === "off"} aria-label="Stop"><Square /></Button>
+            <Button size="icon" onClick={toggle} disabled={!paras.length} aria-label="Play"><Play /></Button>
+            <Button size="icon" variant="outline" onClick={stop} disabled aria-label="Stop"><Square /></Button>
             <Select value={voiceName || "auto"} onValueChange={(v) => { setVoiceName(v === "auto" ? "" : v); }}>
               <SelectTrigger className="flex-1"><SelectValue placeholder="Voice" /></SelectTrigger>
               <SelectContent>
@@ -165,6 +176,7 @@ function Reader() {
           </div>
         </div>
       </footer>
+      )}
     </div>
   );
 }
