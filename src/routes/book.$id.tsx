@@ -10,8 +10,11 @@ import { TranslateSettings } from "@/components/TranslateSettings";
 import { translationEngineLabel } from "@/lib/translation-utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { buildEpub, buildTxt, downloadBlob } from "@/lib/export";
+import { requireSiteAccess } from "@/lib/gate-loader";
+import { LockSite } from "@/components/LockSite";
 
 export const Route = createFileRoute("/book/$id")({
+  beforeLoad: requireSiteAccess,
   head: () => ({
     meta: [
       { property: "og:type", content: "website" },
@@ -63,7 +66,7 @@ function BookPage() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-6">
-      <Link to="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4" /> Library</Link>
+      <div className="flex items-center justify-between"><Link to="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4" /> Library</Link><LockSite /></div>
       <div className="mt-4 flex gap-4">
         {book.cover && <img src={book.cover} alt="" className="h-36 w-24 rounded object-cover shadow" />}
         <div>

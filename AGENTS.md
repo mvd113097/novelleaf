@@ -33,3 +33,4 @@ use the editor.
 - Keep books, chapters and translation checkpoints behind the storage helper with IndexedDB primary storage and best-effort localStorage recovery copies; browser storage remains origin-specific.
 - Serialize chapter translation in the browser and capture settings once per bulk job so engine changes cannot alter an active job.
 - Isolate Google translation endpoint fallback and bounded backoff in its server-only helper; retry only transient failures and preserve completed chunks.
+- Verify shared site access with a server-only password comparison and encrypted HttpOnly session; guard every content route and every import/translation handler, without deleting local reader data on lock.

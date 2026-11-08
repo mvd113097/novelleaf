@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { googleTranslate } from "./google-translate.server";
+import { requireUnlocked } from "./gate.server";
 
 export const ALLOWED_HOSTS = ["52shuku.net", "52shuku.vip", "dmxs.org", "fuxsw.com", "fuxb.com", "fuxb.net", "fuxb.org", "fuxb.cc"];
 
@@ -19,6 +20,7 @@ export const fetchPage = createServerFn({ method: "POST" })
     return input;
   })
   .handler(async ({ data }) => {
+    await requireUnlocked(process.env["SESSION_SECRET"]);
     if (!hostAllowed(data.url)) throw new Error("Only 52shuku, dmxs and fuxb links are supported.");
     const res = await fetch(data.url, {
       headers: {
@@ -46,6 +48,7 @@ export const translateText = createServerFn({ method: "POST" })
     return input;
   })
   .handler(async ({ data }) => {
+    await requireUnlocked(process.env["SESSION_SECRET"]);
     if (data.engine === "google") {
       return { text: await googleTranslate(data.text) };
     }

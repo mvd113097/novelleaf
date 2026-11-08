@@ -6,8 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TranslateSettings } from "@/components/TranslateSettings";
 import { importBook, listBooks, type Book } from "@/lib/novel";
+import { requireSiteAccess } from "@/lib/gate-loader";
+import { LockSite } from "@/components/LockSite";
 
 export const Route = createFileRoute("/")({
+  beforeLoad: requireSiteAccess,
   head: () => ({
     meta: [
       { property: "og:type", content: "website" },
@@ -42,7 +45,7 @@ function Library() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
-      <div className="flex items-center justify-between"><h1 className="font-display text-4xl font-bold text-primary">Inkleaf</h1><TranslateSettings /></div>
+      <div className="flex items-center justify-between"><h1 className="font-display text-4xl font-bold text-primary">Inkleaf</h1><div className="flex"><TranslateSettings /><LockSite /></div></div>
       <p className="mt-1 text-muted-foreground">Paste a novel page link from 52shuku, dmxs or fuxb.</p>
       <form onSubmit={add} className="mt-6 flex gap-2">
         <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.52shuku.net/..." type="url" required />

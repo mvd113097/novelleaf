@@ -8,8 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getBook, getChapter, getTranslateSettings, saveBook, translateChapter, type Book, type Chapter } from "@/lib/novel";
 import { useReaderPreferences } from "@/lib/reader-preferences";
 import { TranslateSettings } from "@/components/TranslateSettings";
+import { requireSiteAccess } from "@/lib/gate-loader";
+import { LockSite } from "@/components/LockSite";
 
 export const Route = createFileRoute("/read/$id/$idx")({
+  beforeLoad: requireSiteAccess,
   head: () => ({
     meta: [
       { property: "og:type", content: "website" },
@@ -131,6 +134,7 @@ function Reader() {
         <Button asChild variant="ghost" size="icon"><Link to="/book/$id" params={{ id }} aria-label="Contents"><List /></Link></Button>
         <div className="min-w-0 flex-1 truncate text-sm font-medium">{book?.chapters[i]?.title}</div>
         <TranslateSettings />
+        <LockSite />
         <Button variant={showEn ? "default" : "outline"} size="sm" onClick={translate} disabled={!ch || translating}>
           {translating ? <Loader2 className="animate-spin" /> : <Languages />} {ch?.translated ? (showEn ? "中文" : "English") : "Translate"}
         </Button>

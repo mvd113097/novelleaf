@@ -3,3 +3,6 @@
 - [x] Show and lock the selected translation engine before bulk translation.
 - [x] Persist global reading preferences, including theme, without startup overwrites.
 - [x] Test storage, preferences, translation recovery and the reading flow.
+- [x] Add a server-verified shared password and encrypted unlock session.
+- [x] Protect all reading pages and import/translation services; add a lock button.
+- [x] Verify incorrect passwords, unlocking, reloads and locking again.
