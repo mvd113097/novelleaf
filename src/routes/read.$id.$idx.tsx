@@ -6,11 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getBook, getChapter, getTranslateSettings, saveBook, translateChapter, type Book, type Chapter } from "@/lib/novel";
+import { useReaderPreferences } from "@/lib/reader-preferences";
 import { TranslateSettings } from "@/components/TranslateSettings";
 
 export const Route = createFileRoute("/read/$id/$idx")({
   head: () => ({
     meta: [
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       { title: "Reading — Inkleaf" },
       { name: "description", content: "Read, translate and listen to a chapter." },
       { property: "og:title", content: "Reading — Inkleaf" },
@@ -27,32 +30,32 @@ function Reader() {
   const [book, setBook] = useState<Book | null>(null);
   const [ch, setCh] = useState<Chapter | null>(null);
   const [err, setErr] = useState("");
-  const [showEn, setShowEn] = useState(false);
+  const { prefs, update } = useReaderPreferences();
+  const { showEn, fontSize, rate, voiceName } = prefs;
+  const setShowEn = (showEn: boolean) => update({ showEn });
+  const setFontSize = (fontSize: number) => update({ fontSize });
+  const setRate = (rate: number) => update({ rate });
+  const setVoiceName = (voiceName: string) => update({ voiceName });
   const [translating, setTranslating] = useState(false);
-  const [fontSize, setFontSize] = useState(19);
   // TTS
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [voiceName, setVoiceName] = useState("");
-  const [rate, setRate] = useState(1);
   const [speaking, setSpeaking] = useState<"off" | "play" | "pause">("off");
   const [cur, setCur] = useState(-1);
   const autoNext = useRef(false);
 
   useEffect(() => {
-    const s = localStorage.getItem("reader-prefs");
-    if (s) { const p = JSON.parse(s); setFontSize(p.fontSize ?? 19); setRate(p.rate ?? 1); setVoiceName(p.voiceName ?? ""); setShowEn(!!p.showEn); }
     const load = () => setVoices(speechSynthesis.getVoices());
     load(); speechSynthesis.onvoiceschanged = load;
     return () => { speechSynthesis.cancel(); };
   }, []);
-  useEffect(() => { localStorage.setItem("reader-prefs", JSON.stringify({ fontSize, rate, voiceName, showEn })); }, [fontSize, rate, voiceName, showEn]);
 
   useEffect(() => {
     let alive = true;
     setCh(null); setErr(""); setCur(-1);
     getBook(id).then(async (b) => {
-      if (!b || !alive) return;
-      setBook(b); b.lastRead = i; saveBook(b);
+      if (!alive) return;
+      if (!b) { setErr("This book is not saved in this browser. Return to your library to add it."); return; }
+      setBook(b); b.lastRead = i; await saveBook(b);
       try {
         let c = await getChapter(b, i);
         if (!alive) return;
@@ -68,7 +71,7 @@ function Reader() {
         }
       }
       catch (e) { if (alive) setErr(e instanceof Error ? e.message : "Could not load chapter (offline?)"); }
-    });
+    }).catch((e) => { if (alive) setErr(e instanceof Error ? e.message : "Could not read saved book"); });
     return () => { alive = false; };
   }, [id, i]);
 
@@ -150,10 +153,10 @@ function Reader() {
       {speaking !== "off" ? (
       <footer className="fixed inset-x-0 bottom-0 z-20 bg-player text-player-foreground pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto grid max-w-md grid-cols-4 place-items-center py-4">
-          <button aria-label="Previous paragraph" onClick={() => speakFrom(Math.max(cur - 1, 0))} className="p-3"><Rewind className="h-7 w-7" fill="currentColor" /></button>
-          <button aria-label="Stop" onClick={stop} className="p-3"><Square className="h-6 w-6" fill="currentColor" /></button>
-          <button aria-label={speaking === "play" ? "Pause" : "Play"} onClick={toggle} className="p-3">{speaking === "play" ? <Pause className="h-7 w-7" fill="currentColor" /> : <Play className="h-7 w-7" fill="currentColor" />}</button>
-          <button aria-label="Next paragraph" onClick={() => speakFrom(cur + 1)} className="p-3"><FastForward className="h-7 w-7" fill="currentColor" /></button>
+          <Button variant="ghost" size="icon" aria-label="Previous paragraph" onClick={() => speakFrom(Math.max(cur - 1, 0))} className="h-14 w-14 hover:bg-player-foreground/10 hover:text-player-foreground"><Rewind className="h-7 w-7" fill="currentColor" /></Button>
+          <Button variant="ghost" size="icon" aria-label="Stop" onClick={stop} className="h-14 w-14 hover:bg-player-foreground/10 hover:text-player-foreground"><Square className="h-6 w-6" fill="currentColor" /></Button>
+          <Button variant="ghost" size="icon" aria-label={speaking === "play" ? "Pause" : "Play"} onClick={toggle} className="h-14 w-14 hover:bg-player-foreground/10 hover:text-player-foreground">{speaking === "play" ? <Pause className="h-7 w-7" fill="currentColor" /> : <Play className="h-7 w-7" fill="currentColor" />}</Button>
+          <Button variant="ghost" size="icon" aria-label="Next paragraph" onClick={() => speakFrom(cur + 1)} className="h-14 w-14 hover:bg-player-foreground/10 hover:text-player-foreground"><FastForward className="h-7 w-7" fill="currentColor" /></Button>
         </div>
       </footer>
       ) : (

@@ -1,0 +1,5 @@
+- [x] Protect library and cached chapters with durable browser storage and recovery.
+- [x] Reduce Google Translate throttling with chunking, pacing, fallback endpoints and bounded retries.
+- [x] Show and lock the selected translation engine before bulk translation.
+- [x] Persist global reading preferences, including theme, without startup overwrites.
+- [x] Test storage, preferences, translation recovery and the reading flow.

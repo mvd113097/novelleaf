@@ -5,12 +5,17 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
-import { deleteBook, getBook, getChapter, importBook, isCached, translateChapter, type Book, type Chapter } from "@/lib/novel";
+import { deleteBook, getBook, getChapter, getTranslateSettings, importBook, isCached, saveBook, translateChapter, type Book, type Chapter, type TranslateSettings as TranslationConfig } from "@/lib/novel";
+import { TranslateSettings } from "@/components/TranslateSettings";
+import { translationEngineLabel } from "@/lib/translation-utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { buildEpub, buildTxt, downloadBlob } from "@/lib/export";
 
 export const Route = createFileRoute("/book/$id")({
   head: () => ({
     meta: [
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       { title: "Book details — Inkleaf" },
       { name: "description", content: "Summary, table of contents, offline download and export." },
       { property: "og:title", content: "Book details — Inkleaf" },
@@ -27,19 +32,22 @@ function BookPage() {
   const [cached, setCached] = useState<boolean[]>([]);
   const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const [english, setEnglish] = useState(false);
+  const [settings, setSettings] = useState<TranslationConfig | null>(null);
+  const [confirmTranslation, setConfirmTranslation] = useState(false);
+  useEffect(() => { setSettings(getTranslateSettings()); }, []);
   const [ready, setReady] = useState<{ blob: Blob; name: string } | null>(null);
 
   const refreshCache = async (b: Book) => setCached(await Promise.all(b.chapters.map((_, i) => isCached(b, i))));
   useEffect(() => { getBook(id).then((b) => { if (b) { setBook(b); refreshCache(b); } }); }, [id]);
   if (!book) return <main className="p-8 text-muted-foreground">Loading… <Link to="/" className="underline">Back</Link></main>;
 
-  const fetchAll = async (translate: boolean) => {
+  const fetchAll = async (translate: boolean, selected = getTranslateSettings()) => {
     const chs: Chapter[] = [];
     try {
       for (let i = 0; i < book.chapters.length; i++) {
-        setProgress({ label: translate ? "Downloading & translating" : "Downloading", done: i, total: book.chapters.length });
+        setProgress({ label: translate ? `Translating · ${translationEngineLabel(selected)}` : "Downloading", done: i, total: book.chapters.length });
         let c = await getChapter(book, i);
-        if (translate && !c.translated) c = await translateChapter(book, i, c);
+        if (translate && !c.translated) c = await translateChapter(book, i, c, selected);
         chs.push(c);
       }
       return chs;
@@ -72,8 +80,9 @@ function BookPage() {
       <section className="mt-6 space-y-3 rounded-lg border bg-card p-4">
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" disabled={!!progress} onClick={() => run(async () => { await fetchAll(false); toast.success("All chapters saved for offline reading"); })}><Download /> Save all offline</Button>
-          <Button variant="secondary" size="sm" disabled={!!progress} onClick={() => run(async () => { await fetchAll(true); toast.success("All chapters translated"); })}><Languages /> Translate all</Button>
-          <Button variant="secondary" size="sm" disabled={!!progress} onClick={() => run(async () => { const b = await importBook(book.url); b.lastRead = book.lastRead; setBook(b); refreshCache(b); toast.success("Contents refreshed"); })}><RefreshCw /> Refresh</Button>
+          <Button variant="secondary" size="sm" disabled={!!progress || !settings} onClick={() => { setSettings(getTranslateSettings()); setConfirmTranslation(true); }}><Languages /> Translate all · {settings ? translationEngineLabel(settings) : "…"}</Button>
+          <TranslateSettings onChange={setSettings} />
+          <Button variant="secondary" size="sm" disabled={!!progress} onClick={() => run(async () => { const b = await importBook(book.url); b.lastRead = book.lastRead; await saveBook(b); setBook(b); refreshCache(b); toast.success("Contents refreshed"); })}><RefreshCw /> Refresh</Button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" disabled={!!progress} onClick={() => exportAs("epub")}><FileText /> Export EPUB</Button>
@@ -84,6 +93,18 @@ function BookPage() {
         {ready && <Button variant="outline" onClick={() => { downloadBlob(ready.blob, ready.name); setReady(null); }}><Download /> Download {ready.name}</Button>}
       </section>
 
+      <Dialog open={confirmTranslation} onOpenChange={setConfirmTranslation}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Translate all chapters</DialogTitle>
+            <DialogDescription>{settings ? translationEngineLabel(settings) : ""} · {book.chapters.length} chapters. Already translated chapters are kept. Completed work is saved if translation is interrupted.{settings?.engine === "gemini" ? (settings.apiKey ? " Uses your Google API quota." : " Uses built-in AI credits.") : " Free; Google may temporarily limit requests."}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmTranslation(false)}>Cancel</Button>
+            <Button disabled={!settings} onClick={() => { if (!settings) return; const selected = { ...settings }; setConfirmTranslation(false); void run(async () => { await fetchAll(true, selected); toast.success("All chapters translated"); }); }}>Start translation</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <h2 className="mt-6 font-display text-lg font-semibold">Contents</h2>
       <ol className="mt-2 divide-y rounded-lg border bg-card">
         {book.chapters.map((c, i) => (

@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useReaderPreferences } from "@/lib/reader-preferences";
 import { getTranslateSettings, saveTranslateSettings, type TranslateSettings as S } from "@/lib/novel";
 
 const MODELS = [
@@ -15,6 +16,7 @@ const MODELS = [
 ];
 
 export function TranslateSettings({ onChange }: { onChange?: (s: S) => void }) {
+  const { prefs, update: updatePrefs } = useReaderPreferences();
   const [s, setS] = useState<S | null>(null);
   useEffect(() => setS(getTranslateSettings()), []);
   const update = (p: Partial<S>) => { if (!s) return; const n = { ...s, ...p }; setS(n); saveTranslateSettings(n); onChange?.(n); };
@@ -22,6 +24,13 @@ export function TranslateSettings({ onChange }: { onChange?: (s: S) => void }) {
     <Popover>
       <PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label="Translation settings"><Settings2 /></Button></PopoverTrigger>
       <PopoverContent className="w-80 space-y-4">
+        <div className="space-y-1">
+          <Label>Theme</Label>
+          <Select value={prefs.theme} onValueChange={(theme) => { if (theme === "light" || theme === "dark" || theme === "system") updatePrefs({ theme }); }}>
+            <SelectTrigger aria-label="Theme"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="light">Light</SelectItem><SelectItem value="dark">Dark</SelectItem><SelectItem value="system">Device theme</SelectItem></SelectContent>
+          </Select>
+        </div>
         {s && (<>
           <label className="flex items-center justify-between text-sm font-medium">Auto-translate chapters <Switch checked={s.auto} onCheckedChange={(auto) => update({ auto })} /></label>
           <div className="space-y-1">

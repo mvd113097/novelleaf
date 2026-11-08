@@ -28,3 +28,8 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+- Keep browser reading preferences in the root-mounted preferences provider; hydrate before applying them and write only explicit changes to prevent startup overwrites.
+- Keep books, chapters and translation checkpoints behind the storage helper with IndexedDB primary storage and best-effort localStorage recovery copies; browser storage remains origin-specific.
+- Serialize chapter translation in the browser and capture settings once per bulk job so engine changes cannot alter an active job.
+- Isolate Google translation endpoint fallback and bounded backoff in its server-only helper; retry only transient failures and preserve completed chunks.

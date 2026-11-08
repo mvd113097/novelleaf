@@ -1,4 +1,5 @@
-import { get, set, del, keys } from "idb-keyval";
+import { readSaved as get, writeSaved as set, removeSaved as del, savedKeys as keys, requestPersistentStorage } from "./storage";
+import { splitTranslationText } from "./translation-utils";
 import { fetchPage, translateText } from "./remote.functions";
 
 export type ChapterRef = { title: string; url: string };
@@ -40,11 +41,13 @@ function extractToc(doc: Document, base: string): ChapterRef[] {
     const text = clean(a.textContent ?? "");
     if (!text || text.length > 60) return;
     let u: URL;
-    try { u = new URL(a.getAttribute("href")!, base); } catch { return; }
+    const href = a.getAttribute("href");
+    if (!href) return;
+    try { u = new URL(href, base); } catch { return; }
     if (u.hostname !== host || !/\d/.test(u.pathname) || u.href === base) return;
     const container = a.closest("ul,ol,dl,div,section,table") ?? doc.body;
     if (!groups.has(container)) groups.set(container, []);
-    groups.get(container)!.push({ title: text, url: u.href.split("#")[0] ?? u.href });
+    groups.get(container)?.push({ title: text, url: u.href.split("#")[0] ?? u.href });
   });
   let best: ChapterRef[] = [];
   groups.forEach((list) => { if (list.length > best.length) best = list; });
@@ -53,6 +56,7 @@ function extractToc(doc: Document, base: string): ChapterRef[] {
 }
 
 export async function importBook(url: string): Promise<Book> {
+  await requestPersistentStorage();
   const { doc, base } = await loadDoc(url);
   const title = clean(meta(doc, 'meta[property="og:novel:book_name"]') || meta(doc, 'meta[property="og:title"]') || doc.querySelector("h1")?.textContent || doc.title.split(/[_|\-–]/)[0] || "Untitled");
   const author = meta(doc, 'meta[property="og:novel:author"]') || undefined;
@@ -62,6 +66,8 @@ export async function importBook(url: string): Promise<Book> {
   let chapters = extractToc(doc, base);
   if (chapters.length < 2) chapters = [{ title, url: base }];
   const book: Book = { id: btoa(unescape(encodeURIComponent(base))).replace(/[^a-z0-9]/gi, "").slice(-24), url: base, title, author, summary, cover, chapters, addedAt: Date.now() };
+  const existing = await get<Book>(`book:${book.id}`);
+  if (existing?.lastRead !== undefined) book.lastRead = existing.lastRead;
   await set(`book:${book.id}`, book);
   return book;
 }
@@ -97,7 +103,8 @@ export async function getChapter(book: Book, idx: number, forceNetwork = false):
     const { doc, base } = await loadDoc(url);
     const next = Array.from(doc.querySelectorAll("a[href]")).find((a) => /下一页|下页/.test(a.textContent ?? ""));
     paragraphs.push(...extractContent(doc));
-    url = next ? new URL(next.getAttribute("href")!, base).href : null;
+    const nextHref = next?.getAttribute("href");
+    url = nextHref ? new URL(nextHref, base).href : null;
     if (url && !/_\d+\.html?/.test(url)) url = null;
   }
   const ch: Chapter = { title: ref.title, paragraphs };
@@ -107,22 +114,42 @@ export async function getChapter(book: Book, idx: number, forceNetwork = false):
 
 export const isCached = async (book: Book, idx: number) => !!(await get(`ch:${book.id}:${idx}`));
 
-export async function translateChapter(book: Book, idx: number, ch: Chapter): Promise<Chapter> {
-  const chunks: string[][] = [[]];
-  const last = () => chunks[chunks.length - 1]!;
-  let len = 0;
-  for (const p of ch.paragraphs) {
-    if (len + p.length > 2500 && last().length) { chunks.push([]); len = 0; }
-    last().push(p); len += p.length;
-  }
-  const out: string[] = [];
-  for (const c of chunks) {
-    const r = await translateText({ data: { text: c.join("\n\n"), ...getTranslateSettings() } });
-    out.push(...r.text.split(/\n+/).map((s) => s.trim()).filter(Boolean));
-  }
-  const updated = { ...ch, translated: out };
-  await set(`ch:${book.id}:${idx}`, updated);
-  return updated;
+// One browser-wide queue prevents chapter opens and bulk jobs from flooding Google.
+let translationQueue: Promise<unknown> = Promise.resolve();
+const pendingTranslations = new Map<string, Promise<Chapter>>();
+export function translateChapter(book: Book, idx: number, ch: Chapter, settings = getTranslateSettings()): Promise<Chapter> {
+  const key = `ch:${book.id}:${idx}`;
+  const jobKey = `${key}:${settings.engine}:${settings.model}`;
+  const pending = pendingTranslations.get(jobKey);
+  if (pending) return pending;
+  const task = translationQueue.catch(() => {}).then(async () => {
+    const saved = await get<Chapter>(key);
+    if (saved?.translated?.length) return saved;
+    const chunks = splitTranslationText(ch.paragraphs.join("\n\n"), settings.engine === "google" ? 1000 : 2500);
+    const checkpointKey = `translation:${jobKey}`;
+    const checkpoint = await get<{ source: string; output: string[] }>(checkpointKey);
+    const source = ch.paragraphs.join("\n\n");
+    const out = checkpoint?.source === source ? checkpoint.output : [];
+    for (let n = out.length; n < chunks.length; n++) {
+      const chunk = chunks[n];
+      if (chunk === undefined) continue;
+      if (settings.engine === "google") await new Promise<void>((resolve) => setTimeout(resolve, 500));
+      const r = await translateText({ data: { text: chunk, ...settings } });
+      if (!r.text.trim()) throw new Error("No translation returned. Your original chapter is saved.");
+      out.push(r.text);
+      await set(checkpointKey, { source, output: out });
+    }
+    const translated = out.join("\n\n").split(/\n+/).map((p) => p.trim()).filter(Boolean);
+    const updated = { ...ch, translated };
+    await set(key, updated);
+    await del(checkpointKey);
+    return updated;
+  });
+  translationQueue = task;
+  pendingTranslations.set(jobKey, task);
+  const clear = () => { pendingTranslations.delete(jobKey); };
+  task.then(clear, clear);
+  return task;
 }
 
 export async function listBooks(): Promise<Book[]> {
@@ -133,13 +160,17 @@ export async function listBooks(): Promise<Book[]> {
 export const getBook = (id: string) => get<Book>(`book:${id}`);
 export const saveBook = (b: Book) => set(`book:${b.id}`, b);
 export async function deleteBook(b: Book) {
+  const related = (await keys()).filter((key) => key.startsWith(`ch:${b.id}:`) || key.startsWith(`translation:ch:${b.id}:`));
+  await Promise.all(related.map((key) => del(key)));
   await del(`book:${b.id}`);
-  await Promise.all(b.chapters.map((_, i) => del(`ch:${b.id}:${i}`)));
 }
 
 export type TranslateSettings = { engine: "google" | "gemini"; model: string; apiKey: string; auto: boolean };
 export function getTranslateSettings(): TranslateSettings {
   const d: TranslateSettings = { engine: "google", model: "google/gemini-3.1-flash-lite", apiKey: "", auto: true };
-  try { return { ...d, ...JSON.parse(localStorage.getItem("translate-settings") ?? "{}") }; } catch { return d; }
+  try {
+    const s = JSON.parse(localStorage.getItem("translate-settings") ?? "{}");
+    return { engine: s.engine === "gemini" ? "gemini" : "google", model: typeof s.model === "string" ? s.model : d.model, apiKey: typeof s.apiKey === "string" ? s.apiKey : "", auto: typeof s.auto === "boolean" ? s.auto : true };
+  } catch { return d; }
 }
 export const saveTranslateSettings = (s: TranslateSettings) => localStorage.setItem("translate-settings", JSON.stringify(s));

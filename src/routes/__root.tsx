@@ -11,6 +11,8 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import { ReaderPreferencesProvider } from "@/lib/reader-preferences";
+import { requestPersistentStorage } from "@/lib/storage";
 import { Toaster } from "@/components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
@@ -122,12 +124,15 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  useEffect(() => { void requestPersistentStorage(); }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
-      <Toaster position="top-center" />
+      <ReaderPreferencesProvider>
+        <Outlet />
+        <Toaster position="top-center" />
+      </ReaderPreferencesProvider>
     </QueryClientProvider>
   );
 }

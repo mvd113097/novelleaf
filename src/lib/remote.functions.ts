@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { googleTranslate } from "./google-translate.server";
 
 export const ALLOWED_HOSTS = ["52shuku.net", "52shuku.vip", "dmxs.org", "fuxsw.com", "fuxb.com", "fuxb.net", "fuxb.org", "fuxb.cc"];
 
@@ -46,16 +47,9 @@ export const translateText = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     if (data.engine === "google") {
-      const res = await fetch("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ q: data.text }).toString(),
-      });
-      if (!res.ok) throw new Error(`Google Translate failed (${res.status}). Try again in a moment.`);
-      const json = (await res.json()) as [[string, string][]];
-      return { text: (json[0] ?? []).map((x) => x[0]).join("") };
+      return { text: await googleTranslate(data.text) };
     }
-    const model = GEMINI_MODELS.includes(data.model ?? "") ? data.model! : GEMINI_MODELS[0]!;
+    const model = GEMINI_MODELS.find((m) => m === data.model) ?? "google/gemini-3.1-flash-lite";
     // Personal Gemini API key: call Google AI Studio directly (uses your own free quota).
     if (data.apiKey) {
       const res = await fetch(

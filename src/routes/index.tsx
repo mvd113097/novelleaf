@@ -4,11 +4,14 @@ import { BookOpen, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TranslateSettings } from "@/components/TranslateSettings";
 import { importBook, listBooks, type Book } from "@/lib/novel";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       { title: "Inkleaf — Web Novel Reader" },
       { name: "description", content: "Paste a 52shuku, dmxs or fuxb link to read, translate, listen and export web novels." },
       { property: "og:title", content: "Inkleaf — Web Novel Reader" },
@@ -23,7 +26,7 @@ function Library() {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const nav = useNavigate();
-  useEffect(() => { listBooks().then(setBooks); }, []);
+  useEffect(() => { listBooks().then(setBooks).catch(() => toast.error("Could not read your saved library.")); }, []);
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +42,7 @@ function Library() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
-      <h1 className="font-display text-4xl font-bold text-primary">Inkleaf</h1>
+      <div className="flex items-center justify-between"><h1 className="font-display text-4xl font-bold text-primary">Inkleaf</h1><TranslateSettings /></div>
       <p className="mt-1 text-muted-foreground">Paste a novel page link from 52shuku, dmxs or fuxb.</p>
       <form onSubmit={add} className="mt-6 flex gap-2">
         <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.52shuku.net/..." type="url" required />
