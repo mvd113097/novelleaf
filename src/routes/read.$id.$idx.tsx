@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getBook, getChapter, saveBook, translateChapter, type Book, type Chapter } from "@/lib/novel";
+import { getBook, getChapter, getTranslateSettings, saveBook, translateChapter, type Book, type Chapter } from "@/lib/novel";
+import { TranslateSettings } from "@/components/TranslateSettings";
 
 export const Route = createFileRoute("/read/$id/$idx")({
   head: () => ({
@@ -52,7 +53,20 @@ function Reader() {
     getBook(id).then(async (b) => {
       if (!b || !alive) return;
       setBook(b); b.lastRead = i; saveBook(b);
-      try { const c = await getChapter(b, i); if (alive) { setCh(c); window.scrollTo(0, 0); } }
+      try {
+        let c = await getChapter(b, i);
+        if (!alive) return;
+        setCh(c); window.scrollTo(0, 0);
+        if (getTranslateSettings().auto) {
+          if (!c.translated) {
+            setTranslating(true);
+            try { c = await translateChapter(b, i, c); if (alive) setCh(c); }
+            catch (e) { toast.error(e instanceof Error ? e.message : "Translation failed"); }
+            finally { setTranslating(false); }
+          }
+          if (alive && c.translated) setShowEn(true);
+        }
+      }
       catch (e) { if (alive) setErr(e instanceof Error ? e.message : "Could not load chapter (offline?)"); }
     });
     return () => { alive = false; };
@@ -112,11 +126,13 @@ function Reader() {
       <header className="sticky top-0 z-10 flex items-center gap-2 border-b bg-background/95 px-3 py-2 backdrop-blur">
         <Button asChild variant="ghost" size="icon"><Link to="/book/$id" params={{ id }} aria-label="Contents"><List /></Link></Button>
         <div className="min-w-0 flex-1 truncate text-sm font-medium">{book?.chapters[i]?.title}</div>
+        <TranslateSettings />
         <Button variant={showEn ? "default" : "outline"} size="sm" onClick={translate} disabled={!ch || translating}>
           {translating ? <Loader2 className="animate-spin" /> : <Languages />} {ch?.translated ? (showEn ? "中文" : "English") : "Translate"}
         </Button>
       </header>
       <article className="font-reading mx-auto max-w-2xl px-5 py-6 leading-loose" style={{ fontSize }}>
+        {translating && <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Translating to English…</div>}
         {!ch && !err && <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="animate-spin" /> Loading chapter…</div>}
         {err && <p className="text-destructive">{err}</p>}
         {ch && <h1 className="mb-6 font-display text-2xl font-bold">{ch.title}</h1>}

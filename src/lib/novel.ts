@@ -117,7 +117,7 @@ export async function translateChapter(book: Book, idx: number, ch: Chapter): Pr
   }
   const out: string[] = [];
   for (const c of chunks) {
-    const r = await translateText({ data: { text: c.join("\n\n") } });
+    const r = await translateText({ data: { text: c.join("\n\n"), ...getTranslateSettings() } });
     out.push(...r.text.split(/\n+/).map((s) => s.trim()).filter(Boolean));
   }
   const updated = { ...ch, translated: out };
@@ -136,3 +136,10 @@ export async function deleteBook(b: Book) {
   await del(`book:${b.id}`);
   await Promise.all(b.chapters.map((_, i) => del(`ch:${b.id}:${i}`)));
 }
+
+export type TranslateSettings = { engine: "google" | "gemini"; model: string; apiKey: string; auto: boolean };
+export function getTranslateSettings(): TranslateSettings {
+  const d: TranslateSettings = { engine: "google", model: "google/gemini-3.1-flash-lite", apiKey: "", auto: true };
+  try { return { ...d, ...JSON.parse(localStorage.getItem("translate-settings") ?? "{}") }; } catch { return d; }
+}
+export const saveTranslateSettings = (s: TranslateSettings) => localStorage.setItem("translate-settings", JSON.stringify(s));

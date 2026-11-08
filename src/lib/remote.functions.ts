@@ -34,33 +34,53 @@ export const fetchPage = createServerFn({ method: "POST" })
     return { base64: btoa(bin), contentType: res.headers.get("content-type") ?? "", finalUrl: res.url || data.url };
   });
 
+const SYSTEM =
+  "You are a literary translator of Chinese web novels. Translate the user's Chinese text into fluent, natural English. Keep paragraph breaks (one blank line between paragraphs). Keep names consistent in pinyin. Output only the translation.";
+
+export const GEMINI_MODELS = ["google/gemini-3.1-flash-lite", "google/gemini-3.8-flash", "google/gemini-3.7-flash"];
+
 export const translateText = createServerFn({ method: "POST" })
-  .inputValidator((input: { text: string }) => {
+  .inputValidator((input: { text: string; engine?: "google" | "gemini"; model?: string; apiKey?: string }) => {
     if (typeof input?.text !== "string" || input.text.length > 12000) throw new Error("Invalid text");
     return input;
   })
   .handler(async ({ data }) => {
-    const key = process.env['LOVABLE_API_KEY'];
+    if (data.engine === "google") {
+      const res = await fetch("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ q: data.text }).toString(),
+      });
+      if (!res.ok) throw new Error(`Google Translate failed (${res.status}). Try again in a moment.`);
+      const json = (await res.json()) as [[string, string][]];
+      return { text: (json[0] ?? []).map((x) => x[0]).join("") };
+    }
+    const model = GEMINI_MODELS.includes(data.model ?? "") ? data.model! : GEMINI_MODELS[0]!;
+    // Personal Gemini API key: call Google AI Studio directly (uses your own free quota).
+    if (data.apiKey) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model.replace("google/", "")}:generateContent?key=${encodeURIComponent(data.apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ systemInstruction: { parts: [{ text: SYSTEM }] }, contents: [{ role: "user", parts: [{ text: data.text }] }] }),
+        },
+      );
+      if (!res.ok) throw new Error(`Gemini API error (${res.status}): ${(await res.text()).slice(0, 200)}`);
+      const json = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+      return { text: json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "" };
+    }
+    const key = process.env["LOVABLE_API_KEY"];
     if (!key) throw new Error("Translation is not configured.");
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-3.8-flash",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a literary translator of Chinese web novels. Translate the user's Chinese text into fluent, natural English. Keep paragraph breaks (one blank line between paragraphs). Keep names consistent in pinyin. Output only the translation.",
-          },
-          { role: "user", content: data.text },
-        ],
-      }),
+      body: JSON.stringify({ model, messages: [{ role: "system", content: SYSTEM }, { role: "user", content: data.text }] }),
     });
     if (!res.ok) {
       const body = await res.text();
       if (res.status === 429) throw new Error("Too many translation requests, please wait a moment.");
-      if (res.status === 402) throw new Error("AI credits are used up for this workspace.");
+      if (res.status === 402) throw new Error("AI credits are used up. Switch to Google Translate in settings.");
       throw new Error(`Translation failed (${res.status}): ${body.slice(0, 200)}`);
     }
     const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
