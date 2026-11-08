@@ -153,3 +153,26 @@
     color: var(--color-foreground);
   }
 }
+
+:root {
+  --background: oklch(0.97 0.015 85);
+  --foreground: oklch(0.25 0.03 50);
+  --card: oklch(0.985 0.01 85);
+  --card-foreground: oklch(0.25 0.03 50);
+  --popover: oklch(0.985 0.01 85);
+  --popover-foreground: oklch(0.25 0.03 50);
+  --primary: oklch(0.45 0.12 30);
+  --primary-foreground: oklch(0.98 0.01 85);
+  --secondary: oklch(0.92 0.025 80);
+  --secondary-foreground: oklch(0.3 0.04 50);
+  --muted: oklch(0.93 0.02 80);
+  --muted-foreground: oklch(0.5 0.03 60);
+  --accent: oklch(0.9 0.04 70);
+  --accent-foreground: oklch(0.3 0.04 50);
+  --border: oklch(0.87 0.025 75);
+  --input: oklch(0.87 0.025 75);
+  --ring: oklch(0.45 0.12 30);
+}
+body { font-family: "Source Sans 3", system-ui, sans-serif; }
+.font-reading { font-family: "Lora", "Noto Serif SC", serif; }
+.font-display { font-family: "Lora", serif; }
