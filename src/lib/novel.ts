@@ -2,7 +2,7 @@ import { get, set, del, keys } from "idb-keyval";
 import { fetchPage, translateText } from "./remote.functions";
 
 export type ChapterRef = { title: string; url: string };
-export type Book = { id: string; url: string; title: string; author?: string; summary: string; cover?: string; chapters: ChapterRef[]; addedAt: number; lastRead?: number };
+export type Book = { id: string; url: string; title: string; author?: string | undefined; summary: string; cover?: string | undefined; chapters: ChapterRef[]; addedAt: number; lastRead?: number | undefined };
 export type Chapter = { title: string; paragraphs: string[]; translated?: string[] };
 
 function decode(b64: string, contentType: string) {
@@ -44,7 +44,7 @@ function extractToc(doc: Document, base: string): ChapterRef[] {
     if (u.hostname !== host || !/\d/.test(u.pathname) || u.href === base) return;
     const container = a.closest("ul,ol,dl,div,section,table") ?? doc.body;
     if (!groups.has(container)) groups.set(container, []);
-    groups.get(container)!.push({ title: text, url: u.href.split("#")[0] });
+    groups.get(container)!.push({ title: text, url: u.href.split("#")[0] ?? u.href });
   });
   let best: ChapterRef[] = [];
   groups.forEach((list) => { if (list.length > best.length) best = list; });
@@ -90,6 +90,7 @@ export async function getChapter(book: Book, idx: number, forceNetwork = false):
   const key = `ch:${book.id}:${idx}`;
   if (!forceNetwork) { const c = await get<Chapter>(key); if (c) return c; }
   const ref = book.chapters[idx];
+  if (!ref) throw new Error("Chapter not found");
   let url: string | null = ref.url;
   const paragraphs: string[] = [];
   for (let page = 0; url && page < 8; page++) {
@@ -108,10 +109,11 @@ export const isCached = async (book: Book, idx: number) => !!(await get(`ch:${bo
 
 export async function translateChapter(book: Book, idx: number, ch: Chapter): Promise<Chapter> {
   const chunks: string[][] = [[]];
+  const last = () => chunks[chunks.length - 1]!;
   let len = 0;
   for (const p of ch.paragraphs) {
-    if (len + p.length > 2500 && chunks[chunks.length - 1].length) { chunks.push([]); len = 0; }
-    chunks[chunks.length - 1].push(p); len += p.length;
+    if (len + p.length > 2500 && last().length) { chunks.push([]); len = 0; }
+    last().push(p); len += p.length;
   }
   const out: string[] = [];
   for (const c of chunks) {
