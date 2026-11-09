@@ -9,3 +9,4 @@
 - [x] Fix "Google Translate busy" by translating from the reader's own browser first, with server fallback.
 - [x] Make auto-translate easy to turn off so chapters open in Chinese for the browser's translator.
 - [x] Show library titles in English and let the reader rename a book.
+- [x] Keep each reader page separate; load only the selected page and advance through the existing Next control.

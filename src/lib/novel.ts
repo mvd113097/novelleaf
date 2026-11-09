@@ -100,21 +100,14 @@ function extractContent(doc: Document) {
 }
 
 export async function getChapter(book: Book, idx: number, forceNetwork = false): Promise<Chapter> {
-  const key = `ch:${book.id}:${idx}`;
+  // Versioned storage prevents older caches, which merged continuation pages,
+  // from appearing as a single chapter in the reader.
+  const key = `ch:${book.id}:${idx}:single-page-v2`;
   if (!forceNetwork) { const c = await get<Chapter>(key); if (c) return c; }
   const ref = book.chapters[idx];
   if (!ref) throw new Error("Chapter not found");
-  let url: string | null = ref.url;
-  const paragraphs: string[] = [];
-  for (let page = 0; url && page < 8; page++) {
-    const { doc, base } = await loadDoc(url);
-    const next = Array.from(doc.querySelectorAll("a[href]")).find((a) => /下一页|下页/.test(a.textContent ?? ""));
-    paragraphs.push(...extractContent(doc));
-    const nextHref = next?.getAttribute("href");
-    url = nextHref ? new URL(nextHref, base).href : null;
-    if (url && !/_\d+\.html?/.test(url)) url = null;
-  }
-  const ch: Chapter = { title: ref.title, paragraphs };
+  const { doc } = await loadDoc(ref.url);
+  const ch: Chapter = { title: ref.title, paragraphs: extractContent(doc) };
   await set(key, ch);
   return ch;
 }
@@ -152,13 +145,13 @@ export async function renameBook(book: Book, name: string): Promise<Book> {
   return updated;
 }
 
-export const isCached = async (book: Book, idx: number) => !!(await get(`ch:${book.id}:${idx}`));
+export const isCached = async (book: Book, idx: number) => !!(await get(`ch:${book.id}:${idx}:single-page-v2`));
 
 // One browser-wide queue prevents chapter opens and bulk jobs from flooding Google.
 let translationQueue: Promise<unknown> = Promise.resolve();
 const pendingTranslations = new Map<string, Promise<Chapter>>();
 export function translateChapter(book: Book, idx: number, ch: Chapter, settings = getTranslateSettings()): Promise<Chapter> {
-  const key = `ch:${book.id}:${idx}`;
+  const key = `ch:${book.id}:${idx}:single-page-v2`;
   const jobKey = `${key}:${settings.engine}:${settings.model}`;
   const pending = pendingTranslations.get(jobKey);
   if (pending) return pending;

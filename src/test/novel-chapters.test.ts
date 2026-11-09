@@ -1,0 +1,60 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const state = vi.hoisted(() => ({ saved: new Map<string, unknown>(), fetchPage: vi.fn() }));
+
+vi.mock("@/lib/storage", () => ({
+  readSaved: vi.fn(async (key: string) => state.saved.get(key)),
+  writeSaved: vi.fn(async (key: string, value: unknown) => { state.saved.set(key, value); }),
+  removeSaved: vi.fn(async (key: string) => { state.saved.delete(key); }),
+  savedKeys: vi.fn(async () => [...state.saved.keys()]),
+  requestPersistentStorage: vi.fn(),
+}));
+
+vi.mock("@/lib/remote.functions", () => ({
+  fetchPage: state.fetchPage,
+  translateText: vi.fn(),
+}));
+
+import { getChapter, type Book } from "@/lib/novel";
+
+const page = (text: string, nextUrl = "") => {
+  const next = nextUrl ? `<a href="${nextUrl}">下一页</a>` : "";
+  const html = `<html><body><article><p>${text}</p>${next}</article></body></html>`;
+  const bytes = new TextEncoder().encode(html);
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+  return { base64: btoa(binary), contentType: "text/html; charset=utf-8", finalUrl: "https://www.52shuku.net/yanqing/08_b/bkfNH.html" };
+};
+
+const book = (url = "https://www.52shuku.net/yanqing/08_b/bkfNH.html"): Book => ({
+  id: "novel",
+  url,
+  title: "Novel",
+  summary: "",
+  chapters: [{ title: "Page 1", url }],
+  addedAt: 1,
+});
+
+describe("chapter page boundaries", () => {
+  beforeEach(() => {
+    state.saved.clear();
+    state.fetchPage.mockReset();
+    state.fetchPage.mockResolvedValue(page("Only page one.", "bkfNH_2.html"));
+  });
+
+  it("loads only the selected page and does not follow its next-page link", async () => {
+    const chapter = await getChapter(book(), 0);
+
+    expect(chapter.paragraphs).toEqual(["Only page one."]);
+    expect(state.fetchPage).toHaveBeenCalledTimes(1);
+    expect(state.fetchPage).toHaveBeenCalledWith({ data: { url: book().chapters[0]?.url } });
+  });
+
+  it("ignores older cached entries that may contain merged continuation pages", async () => {
+    state.saved.set("ch:novel:0", { title: "Page 1", paragraphs: ["Page one", "Page two"] });
+
+    const chapter = await getChapter(book(), 0);
+
+    expect(chapter.paragraphs).toEqual(["Only page one."]);
+    expect(state.fetchPage).toHaveBeenCalledTimes(1);
+  });
+});
