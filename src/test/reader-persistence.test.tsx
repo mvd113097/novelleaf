@@ -36,4 +36,10 @@ describe("Saved reader data", () => {
   it("falls back safely for corrupted preferences", () => {
     localStorage.setItem("reader-prefs", "bad json"); expect(readReaderPreferences().fontSize).toBe(19);
   });
+  it("keeps smaller reader text across preference reloads", () => {
+    localStorage.setItem("reader-prefs", JSON.stringify({ fontSize: 8 }));
+    expect(readReaderPreferences().fontSize).toBe(8);
+    localStorage.setItem("reader-prefs", JSON.stringify({ fontSize: 10 }));
+    expect(readReaderPreferences().fontSize).toBe(10);
+  });
 });

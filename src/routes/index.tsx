@@ -1,12 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { BookOpen, Loader2, Pencil, Plus } from "lucide-react";
+import { BookOpen, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AutoTranslateSwitch, TranslateSettings } from "@/components/TranslateSettings";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { bookTitle, ensureEnglishTitle, importBook, listBooks, renameBook, type Book } from "@/lib/novel";
+import { bookTitle, deleteBook, ensureEnglishTitle, importBook, listBooks, renameBook, type Book } from "@/lib/novel";
 import { requireSiteAccess } from "@/lib/gate-loader";
 import { LockSite } from "@/components/LockSite";
 
@@ -32,6 +32,19 @@ function Library() {
   const nav = useNavigate();
   const [editing, setEditing] = useState<Book | null>(null);
   const [name, setName] = useState("");
+  const [deleting, setDeleting] = useState<Book | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const remove = async () => {
+    if (!deleting || removing) return;
+    setRemoving(true);
+    try {
+      await deleteBook(deleting);
+      setBooks((cur) => cur.filter((b) => b.id !== deleting.id));
+      setDeleting(null);
+      toast.success("Book deleted");
+    } catch { toast.error("Could not delete this book. Please try again."); }
+    finally { setRemoving(false); }
+  };
   useEffect(() => {
     let alive = true;
     listBooks().then(async (list) => {
@@ -91,6 +104,7 @@ function Library() {
               </div>
             </Link>
             <Button variant="ghost" size="icon" className="absolute right-1 top-1" aria-label={`Rename ${bookTitle(b)}`} onClick={() => openRename(b)}><Pencil /></Button>
+            <Button variant="ghost" size="icon" className="absolute right-1 bottom-1 text-destructive" aria-label={`Delete ${bookTitle(b)}`} title="Delete book" onClick={() => setDeleting(b)}><Trash2 /></Button>
           </li>
         ))}
       </ul>
@@ -107,6 +121,18 @@ function Library() {
             {editing?.customTitle && <Button variant="ghost" onClick={() => void saveName("")}>Use automatic title</Button>}
             <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
             <Button type="submit" form="rename-book">Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!deleting} onOpenChange={(open) => { if (!open && !removing) setDeleting(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete book?</DialogTitle>
+            <DialogDescription>Remove “{deleting ? bookTitle(deleting) : ""}” and its saved chapters and translations from this browser? This cannot be undone.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={removing} onClick={() => setDeleting(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={removing} onClick={() => void remove()}>{removing ? <Loader2 className="animate-spin" /> : <Trash2 />} Delete book</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

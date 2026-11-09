@@ -12,3 +12,5 @@
 - [x] Keep each reader page separate; load only the selected page and advance through the existing Next control.
 - [x] Add saved lookahead translation choices for the next page or next three pages.
 - [x] Remove 52shuku promotional footer text from new and previously saved chapters, preserving offline stories and translations.
+- [ ] Add confirmed library deletion and a direct Library link in the reader.
+- [ ] Allow smaller reader text down to 8px and verify saved preferences.

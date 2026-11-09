@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 export type ReaderPreferences = { fontSize: number; rate: number; voiceName: string; showEn: boolean; theme: "light" | "dark" | "system" };
+export const readerFontSizeLimits = { min: 8, max: 30 };
 export const defaultReaderPreferences: ReaderPreferences = { fontSize: 19, rate: 1, voiceName: "", showEn: false, theme: "light" };
 export function readReaderPreferences(): ReaderPreferences {
   try {
     const p = JSON.parse(localStorage.getItem("reader-prefs") ?? "{}");
     return {
-      fontSize: typeof p.fontSize === "number" ? Math.max(14, Math.min(30, p.fontSize)) : 19,
+      fontSize: typeof p.fontSize === "number" ? Math.max(readerFontSizeLimits.min, Math.min(readerFontSizeLimits.max, p.fontSize)) : 19,
       rate: typeof p.rate === "number" ? Math.max(0.5, Math.min(2.5, p.rate)) : 1,
       voiceName: typeof p.voiceName === "string" ? p.voiceName : "",
       showEn: p.showEn === true,

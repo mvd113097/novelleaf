@@ -15,7 +15,7 @@ vi.mock("@/lib/remote.functions", () => ({
   translateText: vi.fn(),
 }));
 
-import { getChapter, type Book } from "@/lib/novel";
+import { deleteBook, getChapter, type Book } from "@/lib/novel";
 
 const page = (text: string, nextUrl = "") => {
   const next = nextUrl ? `<a href="${nextUrl}">下一页</a>` : "";
@@ -39,6 +39,11 @@ describe("chapter page boundaries", () => {
     state.saved.clear();
     state.fetchPage.mockReset();
     state.fetchPage.mockResolvedValue(page("Only page one.", "bkfNH_2.html"));
+  });
+  it("deletes only the selected novel and its chapters and translation checkpoints", async () => {
+    for (const key of ["book:novel", "ch:novel:0:single-page-v2", "translation:ch:novel:0:single-page-v2:google:model", "book:other", "ch:other:0:single-page-v2"]) state.saved.set(key, {});
+    await deleteBook(book());
+    expect([...state.saved.keys()]).toEqual(["book:other", "ch:other:0:single-page-v2"]);
   });
 
   it("loads only the selected page and does not follow its next-page link", async () => {
