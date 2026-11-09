@@ -64,8 +64,15 @@ function extractToc(doc: Document, base: string): ChapterRef[] {
   let best: ChapterRef[] = [];
   groups.forEach((list) => { if (list.length > best.length) best = list; });
   const seen = new Set<string>();
-  return best.filter((c) => (seen.has(c.url) ? false : (seen.add(c.url), true)));
+  const list = best.filter((c) => !PAGER_LINKS.test(c.title)).filter((c) => (seen.has(c.url) ? false : (seen.add(c.url), true)));
+  // fuxsb-style pagers list bare page numbers and the book page itself is page 1.
+  if (list.length > 1 && list.every((c) => /^\d+$/.test(c.title))) {
+    const pages = list.map((c) => ({ title: `第${c.title}页`, url: c.url }));
+    return list[0]?.title === "2" && !seen.has(base) ? [{ title: "第1页", url: base }, ...pages] : pages;
+  }
+  return list;
 }
+const PAGER_LINKS = /^(下一页|上一页|首页|尾页|末页|下一章|上一章|返回目录)$/;
 
 export async function importBook(url: string): Promise<Book> {
   await requestPersistentStorage();

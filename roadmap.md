@@ -14,3 +14,5 @@
 - [x] Remove 52shuku promotional footer text from new and previously saved chapters, preserving offline stories and translations.
 - [x] Add confirmed library deletion and a direct Library link in the reader.
 - [x] Allow smaller reader text down to 8px and verify saved preferences.
+- [x] Download "Save all offline"/export pages 6 at a time with retries; keep translation one at a time.
+- [x] Support fuxsb.com links (page 1 + numbered pages) and verify 52shuku, dmxs and fuxsb imports.

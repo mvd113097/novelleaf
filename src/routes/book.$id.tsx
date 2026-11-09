@@ -10,6 +10,7 @@ import { AutoTranslateSwitch, TranslateSettings, useTranslateSettings } from "@/
 import { translationEngineLabel } from "@/lib/translation-utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { buildEpub, buildTxt, downloadBlob } from "@/lib/export";
+import { DOWNLOAD_CONCURRENCY, runPool } from "@/lib/download-pool";
 import { requireSiteAccess } from "@/lib/gate-loader";
 import { LockSite } from "@/components/LockSite";
 
@@ -44,13 +45,24 @@ function BookPage() {
   if (!book) return <main className="p-8 text-muted-foreground">Loading… <Link to="/" className="underline">Back</Link></main>;
 
   const fetchAll = async (translate: boolean, selected = getTranslateSettings()) => {
-    const chs: Chapter[] = [];
+    const total = book.chapters.length;
     try {
-      for (let i = 0; i < book.chapters.length; i++) {
-        setProgress({ label: translate ? `Translating · ${translationEngineLabel(selected)}` : "Downloading", done: i, total: book.chapters.length });
-        let c = await getChapter(book, i);
-        if (translate && !c.translated) c = await translateChapter(book, i, c, selected);
-        chs.push(c);
+      // Raw pages download several at a time; translation stays one at a time to respect Google/Gemini limits.
+      setProgress({ label: `Downloading · ${DOWNLOAD_CONCURRENCY} at a time`, done: 0, total });
+      const { results, failed } = await runPool(total, (i) => getChapter(book, i), {
+        onProgress: (done) => setProgress({ label: `Downloading · ${DOWNLOAD_CONCURRENCY} at a time`, done, total }),
+      });
+      if (failed.length) {
+        const list = failed.slice(0, 5).map((i) => i + 1).join(", ") + (failed.length > 5 ? "…" : "");
+        throw new Error(`${failed.length} chapter${failed.length > 1 ? "s" : ""} could not be downloaded (ch. ${list}). The other ${total - failed.length} are saved — tap again to retry the rest.`);
+      }
+      const chs = results as Chapter[];
+      if (translate) {
+        for (let i = 0; i < total; i++) {
+          setProgress({ label: `Translating · ${translationEngineLabel(selected)}`, done: i, total });
+          const c = chs[i];
+          if (c && !c.translated) chs[i] = await translateChapter(book, i, c, selected);
+        }
       }
       return chs;
     } finally { setProgress(null); refreshCache(book); }

@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { googleTranslate } from "./google-translate";
 import { requireUnlocked } from "./gate.server";
 
-export const ALLOWED_HOSTS = ["52shuku.net", "52shuku.vip", "dmxs.org", "fuxsw.com", "fuxb.com", "fuxb.net", "fuxb.org", "fuxb.cc"];
+export const ALLOWED_HOSTS = ["52shuku.net", "52shuku.vip", "dmxs.org", "fuxsw.com", "fuxsb.com", "fuxb.com", "fuxb.net", "fuxb.org", "fuxb.cc"];
 
 function hostAllowed(url: string) {
   try {
@@ -21,7 +21,7 @@ export const fetchPage = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     await requireUnlocked(process.env["SESSION_SECRET"]);
-    if (!hostAllowed(data.url)) throw new Error("Only 52shuku, dmxs and fuxb links are supported.");
+    if (!hostAllowed(data.url)) throw new Error("Only 52shuku, dmxs and fuxsb links are supported.");
     const res = await fetch(data.url, {
       headers: {
         "User-Agent":

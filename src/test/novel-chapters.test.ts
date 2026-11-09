@@ -15,7 +15,7 @@ vi.mock("@/lib/remote.functions", () => ({
   translateText: vi.fn(),
 }));
 
-import { deleteBook, getChapter, type Book } from "@/lib/novel";
+import { deleteBook, getChapter, importBook, type Book } from "@/lib/novel";
 
 const page = (text: string, nextUrl = "") => {
   const next = nextUrl ? `<a href="${nextUrl}">下一页</a>` : "";
@@ -44,6 +44,20 @@ describe("chapter page boundaries", () => {
     for (const key of ["book:novel", "ch:novel:0:single-page-v2", "translation:ch:novel:0:single-page-v2:google:model", "book:other", "ch:other:0:single-page-v2"]) state.saved.set(key, {});
     await deleteBook(book());
     expect([...state.saved.keys()]).toEqual(["book:other", "ch:other:0:single-page-v2"]);
+  });
+
+  it("imports a fuxsb numbered pager as page 1 (the book page) through the last page", async () => {
+    const base = "https://www.fuxsb.com/xiandai/27729.html";
+    const pager = `<ul><li><a>第1页</a></li><li><a href="/xiandai/27729_2.html">下一页</a></li><li><a>1</a></li>${[2, 3, 4].map((n) => `<li><a href="/xiandai/27729_${n}.html">${n}</a></li>`).join("")}</ul>`;
+    const bytes = new TextEncoder().encode(`<html><head><meta property="og:novel:book_name" content="Story"></head><body>${pager}</body></html>`);
+    state.fetchPage.mockResolvedValue({ base64: btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join("")), contentType: "text/html; charset=utf-8", finalUrl: base });
+    const imported = await importBook(base);
+    expect(imported.chapters).toEqual([
+      { title: "第1页", url: base },
+      { title: "第2页", url: "https://www.fuxsb.com/xiandai/27729_2.html" },
+      { title: "第3页", url: "https://www.fuxsb.com/xiandai/27729_3.html" },
+      { title: "第4页", url: "https://www.fuxsb.com/xiandai/27729_4.html" },
+    ]);
   });
 
   it("loads only the selected page and does not follow its next-page link", async () => {

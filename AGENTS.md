@@ -35,3 +35,4 @@ use the editor.
 - Isolate Google translation endpoint fallback and bounded backoff in one shared helper; call it from the browser first (reader's own IP avoids shared-server throttling) and fall back to the server function; retry only transient failures and preserve completed chunks.
 - Verify shared site access with a server-only password comparison and encrypted HttpOnly session; guard every content route and every import/translation handler, without deleting local reader data on lock.
 - Keep source-specific chapter footer cleanup in a shared browser-safe helper, applying it on fetch, cache reads and translation; preserve existing offline content rather than invalidating caches.
+- Download raw chapter pages through the shared bounded worker pool (ordered results, per-page retries, partial failures reported); never parallelize translation.
