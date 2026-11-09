@@ -1,14 +1,18 @@
-# Welcome to your Lovable project
+# Novelleaf
+
+Make an app similar to ArcReader: Web Novel Reader that fetches a novel's summary, table of contents, and chapters from pasted links from 52shuku.net, dmxs.org, and fuxb. It should let me read chapters offline, translate raw Chinese chapters into English using Gemini API, download/export the entire book for free without paywalls (in EPUB and TXT formats), and include a text-to-speech (TTS) player that uses the phone's native Google TTS voice via the device speech synthesis.
 
 This project was built with [Lovable](https://lovable.dev).
 
+**Live app**: https://novelleaf.lovable.app
+
 ## Build with Lovable
 
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
+Continue developing this project in the [Lovable editor](https://lovable.dev/projects/ec3b2671-8c50-4231-bfa8-2de618723086).
 
 - **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
+- **Stay in sync**: every change made in Lovable is committed straight to this repository.
+- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
 ## Development
 
@@ -20,10 +24,3 @@ cd <repository-name>
 npm i
 npm run dev
 ```
-
-## Built with
-
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS
