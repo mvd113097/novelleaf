@@ -3,6 +3,7 @@ import { splitTranslationText } from "./translation-utils";
 import { fetchPage, translateText } from "./remote.functions";
 import { googleTranslate } from "./google-translate";
 import { hasChinese } from "./speech-text";
+import { cleanChapterParagraphs } from "./chapter-content";
 
 export type ChapterRef = { title: string; url: string };
 export type Book = { id: string; url: string; title: string; author?: string | undefined; summary: string; cover?: string | undefined; chapters: ChapterRef[]; addedAt: number; lastRead?: number | undefined; titleEn?: string | undefined; customTitle?: string | undefined };
@@ -10,6 +11,12 @@ export type Book = { id: string; url: string; title: string; author?: string | u
 /** Name shown for a book: the reader's own name, else the English translation, else the original. */
 export const bookTitle = (b: Pick<Book, "title" | "titleEn" | "customTitle">) => b.customTitle?.trim() || b.titleEn?.trim() || b.title;
 export type Chapter = { title: string; paragraphs: string[]; translated?: string[] };
+
+function cleanChapter(ch: Chapter, url: string): Chapter {
+  const paragraphs = cleanChapterParagraphs(ch.paragraphs, url);
+  const translated = ch.translated ? cleanChapterParagraphs(ch.translated, url) : undefined;
+  return paragraphs === ch.paragraphs && translated === ch.translated ? ch : { ...ch, paragraphs, ...(translated ? { translated } : {}) };
+}
 
 function decode(b64: string, contentType: string) {
   const bin = atob(b64);
@@ -103,11 +110,18 @@ export async function getChapter(book: Book, idx: number, forceNetwork = false):
   // Versioned storage prevents older caches, which merged continuation pages,
   // from appearing as a single chapter in the reader.
   const key = `ch:${book.id}:${idx}:single-page-v2`;
-  if (!forceNetwork) { const c = await get<Chapter>(key); if (c) return c; }
   const ref = book.chapters[idx];
   if (!ref) throw new Error("Chapter not found");
+  if (!forceNetwork) {
+    const c = await get<Chapter>(key);
+    if (c) {
+      const cleaned = cleanChapter(c, ref.url);
+      if (cleaned !== c) await set(key, cleaned);
+      return cleaned;
+    }
+  }
   const { doc } = await loadDoc(ref.url);
-  const ch: Chapter = { title: ref.title, paragraphs: extractContent(doc) };
+  const ch: Chapter = cleanChapter({ title: ref.title, paragraphs: extractContent(doc) }, ref.url);
   await set(key, ch);
   return ch;
 }
@@ -151,13 +165,19 @@ export const isCached = async (book: Book, idx: number) => !!(await get(`ch:${bo
 let translationQueue: Promise<unknown> = Promise.resolve();
 const pendingTranslations = new Map<string, Promise<Chapter>>();
 export function translateChapter(book: Book, idx: number, ch: Chapter, settings = getTranslateSettings()): Promise<Chapter> {
+  const url = book.chapters[idx]?.url ?? book.url;
+  ch = cleanChapter(ch, url);
   const key = `ch:${book.id}:${idx}:single-page-v2`;
   const jobKey = `${key}:${settings.engine}:${settings.model}`;
   const pending = pendingTranslations.get(jobKey);
   if (pending) return pending;
   const task = translationQueue.catch(() => {}).then(async () => {
     const saved = await get<Chapter>(key);
-    if (saved?.translated?.length) return saved;
+    if (saved?.translated?.length) {
+      const cleaned = cleanChapter(saved, url);
+      if (cleaned !== saved) await set(key, cleaned);
+      return cleaned;
+    }
     const chunks = splitTranslationText(ch.paragraphs.join("\n\n"), settings.engine === "google" ? 1000 : 2500);
     const checkpointKey = `translation:${jobKey}`;
     const checkpoint = await get<{ source: string; output: string[] }>(checkpointKey);
@@ -172,7 +192,7 @@ export function translateChapter(book: Book, idx: number, ch: Chapter, settings 
       out.push(r.text);
       await set(checkpointKey, { source, output: out });
     }
-    const translated = out.join("\n\n").split(/\n+/).map((p) => p.trim()).filter(Boolean);
+    const translated = cleanChapterParagraphs(out.join("\n\n").split(/\n+/).map((p) => p.trim()).filter(Boolean), url);
     const updated = { ...ch, translated };
     await set(key, updated);
     await del(checkpointKey);

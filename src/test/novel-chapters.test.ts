@@ -57,4 +57,24 @@ describe("chapter page boundaries", () => {
     expect(chapter.paragraphs).toEqual(["Only page one."]);
     expect(state.fetchPage).toHaveBeenCalledTimes(1);
   });
+
+  it("removes the 52shuku bookmark notice and portal from newly fetched chapters", async () => {
+    state.fetchPage.mockResolvedValue(page('The story continues.</p><p>Tips：如果觉得52书库不错，记得收藏唯一网址 https://www.52shuku.net/ 或推荐给朋友哦~拜托啦 (&gt;.&lt;)</p><p>传送门：|'));
+    const chapter = await getChapter(book(), 0);
+    expect(chapter.paragraphs).toEqual(["The story continues."]);
+    expect(state.saved.get("ch:novel:0:single-page-v2")).toEqual(chapter);
+  });
+
+  it("cleans saved original and English footers without fetching or losing offline story text", async () => {
+    state.saved.set("ch:novel:0:single-page-v2", {
+      title: "Page 1",
+      paragraphs: ["这是故事。", "如果觉得52书库不错，记得收藏网址或推荐给朋友哦~", "传送门：|"],
+      translated: ["This is the story.", "Oh, friends, if you think 52shuku is good, remember to bookmark the website https://www.52shuku.net/ or recommend it to your friends~ Please (>.<)", "Portal: |"],
+    });
+    const chapter = await getChapter(book(), 0);
+    expect(chapter.paragraphs).toEqual(["这是故事。"]);
+    expect(chapter.translated).toEqual(["This is the story."]);
+    expect(state.fetchPage).not.toHaveBeenCalled();
+    expect(state.saved.get("ch:novel:0:single-page-v2")).toEqual(chapter);
+  });
 });

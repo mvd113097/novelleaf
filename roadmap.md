@@ -11,3 +11,4 @@
 - [x] Show library titles in English and let the reader rename a book.
 - [x] Keep each reader page separate; load only the selected page and advance through the existing Next control.
 - [x] Add saved lookahead translation choices for the next page or next three pages.
+- [x] Remove 52shuku promotional footer text from new and previously saved chapters, preserving offline stories and translations.
