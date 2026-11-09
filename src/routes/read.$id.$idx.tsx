@@ -7,7 +7,8 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getBook, getChapter, getTranslateSettings, saveBook, translateChapter, type Book, type Chapter } from "@/lib/novel";
 import { useReaderPreferences } from "@/lib/reader-preferences";
-import { TranslateSettings } from "@/components/TranslateSettings";
+import { getPrefetchIndexes } from "@/lib/translation-utils";
+import { TranslateSettings, useTranslateSettings } from "@/components/TranslateSettings";
 import { requireSiteAccess } from "@/lib/gate-loader";
 import { LockSite } from "@/components/LockSite";
 import { browserTranslatedLang, hasChinese, speechLang, spokenText } from "@/lib/speech-text";
@@ -35,6 +36,7 @@ function Reader() {
   const [ch, setCh] = useState<Chapter | null>(null);
   const [err, setErr] = useState("");
   const { prefs, update } = useReaderPreferences();
+  const [translationSettings] = useTranslateSettings();
   const { showEn, fontSize, rate, voiceName } = prefs;
   const setShowEn = (showEn: boolean) => update({ showEn });
   const setFontSize = (fontSize: number) => update({ fontSize });
@@ -78,6 +80,29 @@ function Reader() {
     }).catch((e) => { if (alive) setErr(e instanceof Error ? e.message : "Could not read saved book"); });
     return () => { alive = false; };
   }, [id, i]);
+
+  useEffect(() => {
+    if (!book || !ch || !translationSettings?.prefetch) return;
+    const selected = { ...translationSettings };
+    const upcoming = getPrefetchIndexes(i, book.chapters.length, selected.prefetch);
+    if (!upcoming.length) return;
+    let active = true;
+    const pretranslate = async () => {
+      for (const nextIndex of upcoming) {
+        if (!active) return;
+        try {
+          const nextChapter = await getChapter(book, nextIndex);
+          if (!active) return;
+          if (!nextChapter.translated?.length) await translateChapter(book, nextIndex, nextChapter, selected);
+        } catch (error) {
+          if (active) toast.error(error instanceof Error ? error.message : "Pre-translation failed");
+          return;
+        }
+      }
+    };
+    void pretranslate();
+    return () => { active = false; };
+  }, [book, ch, i, translationSettings?.prefetch, translationSettings?.engine, translationSettings?.model, translationSettings?.apiKey]);
 
   const paras = ch ? (showEn && ch.translated ? ch.translated : ch.paragraphs) : [];
   // Detect the browser's own "Translate this page" so read-aloud follows what is on screen.

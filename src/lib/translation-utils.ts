@@ -14,3 +14,9 @@ export function splitTranslationText(text: string, limit = 1000): string[] {
 export function translationEngineLabel(s: { engine: "google" | "gemini"; model: string }) {
   return s.engine === "google" ? "Google Translate" : `Gemini · ${s.model.replace("google/", "")}`;
 }
+
+export function getPrefetchIndexes(currentIndex: number, chapterCount: number, pagesAhead: 0 | 1 | 3): number[] {
+  if (!Number.isInteger(currentIndex) || currentIndex < 0 || !Number.isInteger(chapterCount) || chapterCount <= currentIndex) return [];
+  const count = Math.min(pagesAhead, chapterCount - currentIndex - 1);
+  return Array.from({ length: count }, (_, offset) => currentIndex + offset + 1);
+}

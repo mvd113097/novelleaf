@@ -58,6 +58,18 @@ export function TranslateSettings({ onChange }: { onChange?: (s: S) => void }) {
             <p className="text-xs text-muted-foreground">Turn off to open chapters in Chinese and use your browser's own translator.</p>
           </div>
           <div className="space-y-1">
+            <Label>Pre-translate ahead</Label>
+            <Select value={String(s.prefetch)} onValueChange={(value) => update({ prefetch: value === "1" ? 1 : value === "3" ? 3 : 0 })}>
+              <SelectTrigger aria-label="Pre-translate ahead"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Off</SelectItem>
+                <SelectItem value="1">Next page</SelectItem>
+                <SelectItem value="3">Next 3 pages</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Upcoming pages translate in order as you read. Saved translations are skipped.</p>
+          </div>
+          <div className="space-y-1">
             <Label>Translator</Label>
             <Select value={s.engine} onValueChange={(v) => update({ engine: v as S["engine"] })}>
               <SelectTrigger><SelectValue /></SelectTrigger>

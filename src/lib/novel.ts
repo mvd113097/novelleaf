@@ -198,12 +198,12 @@ export async function deleteBook(b: Book) {
   await del(`book:${b.id}`);
 }
 
-export type TranslateSettings = { engine: "google" | "gemini"; model: string; apiKey: string; auto: boolean };
+export type TranslateSettings = { engine: "google" | "gemini"; model: string; apiKey: string; auto: boolean; prefetch: 0 | 1 | 3 };
 export function getTranslateSettings(): TranslateSettings {
-  const d: TranslateSettings = { engine: "google", model: "google/gemini-3.1-flash-lite", apiKey: "", auto: true };
+  const d: TranslateSettings = { engine: "google", model: "google/gemini-3.1-flash-lite", apiKey: "", auto: true, prefetch: 0 };
   try {
     const s = JSON.parse(localStorage.getItem("translate-settings") ?? "{}");
-    return { engine: s.engine === "gemini" ? "gemini" : "google", model: typeof s.model === "string" ? s.model : d.model, apiKey: typeof s.apiKey === "string" ? s.apiKey : "", auto: typeof s.auto === "boolean" ? s.auto : true };
+    return { engine: s.engine === "gemini" ? "gemini" : "google", model: typeof s.model === "string" ? s.model : d.model, apiKey: typeof s.apiKey === "string" ? s.apiKey : "", auto: typeof s.auto === "boolean" ? s.auto : true, prefetch: s.prefetch === 1 || s.prefetch === 3 ? s.prefetch : 0 };
   } catch { return d; }
 }
 export const TRANSLATE_SETTINGS_EVENT = "inkleaf:translate-settings";
