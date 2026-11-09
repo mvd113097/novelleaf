@@ -37,6 +37,7 @@ function Reader() {
   const [err, setErr] = useState("");
   const { prefs, update } = useReaderPreferences();
   const [translationSettings] = useTranslateSettings();
+  const chapterLoaded = ch !== null;
   const { showEn, fontSize, rate, voiceName } = prefs;
   const setShowEn = (showEn: boolean) => update({ showEn });
   const setFontSize = (fontSize: number) => update({ fontSize });
@@ -82,7 +83,7 @@ function Reader() {
   }, [id, i]);
 
   useEffect(() => {
-    if (!book || !ch || !translationSettings?.prefetch) return;
+    if (!book || !chapterLoaded || !translationSettings?.prefetch) return;
     const selected = { ...translationSettings };
     const upcoming = getPrefetchIndexes(i, book.chapters.length, selected.prefetch);
     if (!upcoming.length) return;
@@ -102,7 +103,7 @@ function Reader() {
     };
     void pretranslate();
     return () => { active = false; };
-  }, [book, ch, i, translationSettings?.prefetch, translationSettings?.engine, translationSettings?.model, translationSettings?.apiKey]);
+  }, [book, chapterLoaded, i, translationSettings?.prefetch, translationSettings?.engine, translationSettings?.model, translationSettings?.apiKey]);
 
   const paras = ch ? (showEn && ch.translated ? ch.translated : ch.paragraphs) : [];
   // Detect the browser's own "Translate this page" so read-aloud follows what is on screen.

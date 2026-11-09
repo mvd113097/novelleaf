@@ -12,6 +12,11 @@ describe("reader translation lookahead", () => {
   it("selects the next three pages, but never beyond the book", () => {
     expect(getPrefetchIndexes(0, 5, 3)).toEqual([1, 2, 3]);
     expect(getPrefetchIndexes(3, 5, 3)).toEqual([4]);
+    expect(getPrefetchIndexes(4, 5, 3)).toEqual([]);
+  });
+
+  it("does not select pages when lookahead is off", () => {
+    expect(getPrefetchIndexes(0, 5, 0)).toEqual([]);
   });
 
   it("keeps lookahead off by default and persists the selected option", () => {
