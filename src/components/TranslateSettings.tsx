@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { parseApiKeys } from "@/lib/translation-utils";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -88,9 +89,9 @@ export function TranslateSettings({ onChange }: { onChange?: (s: S) => void }) {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Your Gemini API key (optional)</Label>
-              <Input type="password" value={s.apiKey} placeholder="AIza… from Google AI Studio" onChange={(e) => update({ apiKey: e.target.value.trim() })} />
-              <p className="text-xs text-muted-foreground">With your own free key, translations use your Google quota. Without it, built-in AI credits are used.</p>
+              <Label>Your Gemini API keys (optional)</Label>
+              <Textarea rows={3} value={s.apiKey} placeholder={"AIza… from Google AI Studio\nOne key per line"} className="font-mono text-xs [-webkit-text-security:disc]" autoComplete="off" spellCheck={false} onChange={(e) => update({ apiKey: e.target.value })} />
+              <p className="text-xs text-muted-foreground">{parseApiKeys(s.apiKey).length ? `${parseApiKeys(s.apiKey).length} key(s). ` : ""}When a key hits its limit the next key is used, then another Gemini model. Several short pages go in one request to save quota. Without a key, built-in AI credits are used.</p>
             </div>
           </>)}
         </>)}

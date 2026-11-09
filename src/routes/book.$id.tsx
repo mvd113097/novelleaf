@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
-import { bookTitle, deleteBook, getBook, getChapter, getTranslateSettings, importBook, isCached, saveBook, translateChapter, type Book, type Chapter } from "@/lib/novel";
+import { bookTitle, deleteBook, getBook, getChapter, getTranslateSettings, importBook, isCached, saveBook, translateChapters, type Book, type Chapter } from "@/lib/novel";
 import { AutoTranslateSwitch, TranslateSettings, useTranslateSettings } from "@/components/TranslateSettings";
 import { translationEngineLabel } from "@/lib/translation-utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -58,11 +58,10 @@ function BookPage() {
       }
       const chs = results as Chapter[];
       if (translate) {
-        for (let i = 0; i < total; i++) {
-          setProgress({ label: `Translating · ${translationEngineLabel(selected)}`, done: i, total });
-          const c = chs[i];
-          if (c && !c.translated) chs[i] = await translateChapter(book, i, c, selected);
-        }
+        const label = `Translating · ${translationEngineLabel(selected)}`;
+        setProgress({ label, done: 0, total });
+        const out = await translateChapters(book, chs.map((ch, idx) => ({ idx, ch })), selected, (done) => setProgress({ label, done, total }));
+        out.forEach((c, idx) => { chs[idx] = c; });
       }
       return chs;
     } finally { setProgress(null); refreshCache(book); }
@@ -113,7 +112,7 @@ function BookPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Translate all chapters</DialogTitle>
-            <DialogDescription>{settings ? translationEngineLabel(settings) : ""} · {book.chapters.length} chapters. Already translated chapters are kept. Completed work is saved if translation is interrupted.{settings?.engine === "gemini" ? (settings.apiKey ? " Uses your Google API quota." : " Uses built-in AI credits.") : " Free; Google may temporarily limit requests."}</DialogDescription>
+            <DialogDescription>{settings ? translationEngineLabel(settings) : ""} · {book.chapters.length} chapters. Already translated chapters are kept. Completed work is saved if translation is interrupted.{settings?.engine === "gemini" ? (settings.apiKey ? " Uses your Google API quota; several short pages share one request." : " Uses built-in AI credits; several short pages share one request.") : " Free; Google may temporarily limit requests."}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmTranslation(false)}>Cancel</Button>

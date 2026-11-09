@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getBook, getChapter, getTranslateSettings, saveBook, translateChapter, type Book, type Chapter } from "@/lib/novel";
+import { getBook, getChapter, getTranslateSettings, saveBook, translateChapter, translateChapters, type Book, type Chapter } from "@/lib/novel";
 import { readerFontSizeLimits, useReaderPreferences } from "@/lib/reader-preferences";
 import { getPrefetchIndexes } from "@/lib/translation-utils";
 import { TranslateSettings, useTranslateSettings } from "@/components/TranslateSettings";
@@ -89,16 +89,13 @@ function Reader() {
     if (!upcoming.length) return;
     let active = true;
     const pretranslate = async () => {
-      for (const nextIndex of upcoming) {
-        if (!active) return;
-        try {
-          const nextChapter = await getChapter(book, nextIndex);
-          if (!active) return;
-          if (!nextChapter.translated?.length) await translateChapter(book, nextIndex, nextChapter, selected);
-        } catch (error) {
-          if (active) toast.error(error instanceof Error ? error.message : "Pre-translation failed");
-          return;
-        }
+      try {
+        const items = [];
+        for (const idx of upcoming) { if (!active) return; items.push({ idx, ch: await getChapter(book, idx) }); }
+        // Gemini packs these upcoming pages into as few requests as possible.
+        if (active) await translateChapters(book, items, selected);
+      } catch (error) {
+        if (active) toast.error(error instanceof Error ? error.message : "Pre-translation failed");
       }
     };
     void pretranslate();

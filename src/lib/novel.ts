@@ -1,6 +1,6 @@
 import { readSaved as get, writeSaved as set, removeSaved as del, savedKeys as keys, requestPersistentStorage } from "./storage";
-import { splitTranslationText } from "./translation-utils";
-import { fetchPage, translateText } from "./remote.functions";
+import { buildBatchText, GEMINI_BATCH_CHARS, packPages, parseApiKeys, splitBatchOutput, splitTranslationText } from "./translation-utils";
+import { fetchPage, GEMINI_MODELS, translateText } from "./remote.functions";
 import { googleTranslate } from "./google-translate";
 import { hasChinese } from "./speech-text";
 import { cleanChapterParagraphs } from "./chapter-content";
@@ -168,48 +168,142 @@ export async function renameBook(book: Book, name: string): Promise<Book> {
 
 export const isCached = async (book: Book, idx: number) => !!(await get(`ch:${book.id}:${idx}:single-page-v2`));
 
-// One browser-wide queue prevents chapter opens and bulk jobs from flooding Google.
+// Keys or models that hit a limit rest for a while; the next key, then the next model, is used.
+const cooldowns = new Map<string, number>();
+export const resetGeminiCooldowns = () => cooldowns.clear();
+type GeminiOutcome = { text: string } | { blocked: true } | { truncated: true };
+async function geminiTranslate(text: string, settings: TranslateSettings, pages = false): Promise<GeminiOutcome> {
+  const keys = parseApiKeys(settings.apiKey);
+  const slots = keys.length ? keys : [""];
+  const models = [settings.model, ...GEMINI_MODELS.filter((m) => m !== settings.model)];
+  let lastError = "";
+  for (const model of models) {
+    for (const apiKey of slots) {
+      const slot = `${apiKey}|${model}`;
+      if ((cooldowns.get(slot) ?? 0) > Date.now()) continue;
+      const r = await translateText({ data: { text, engine: "gemini", model, ...(apiKey ? { apiKey } : {}), pages } });
+      if (r.blocked) return { blocked: true };
+      if (r.truncated) return { truncated: true };
+      if (!r.status && r.text.trim()) return { text: r.text };
+      if (!r.status) throw new Error("No translation returned. Your original chapter is saved.");
+      if (r.status === 402) throw new Error(r.error ?? "AI credits are used up.");
+      lastError = r.error ?? `Gemini error (${r.status})`;
+      if (r.status === 429) cooldowns.set(slot, Date.now() + 60_000);
+      else if (r.status === 401 || r.status === 403) cooldowns.set(slot, Date.now() + 3_600_000);
+      else if (r.status === 404 && apiKey) cooldowns.set(slot, Date.now() + 3_600_000);
+      else throw new Error(lastError);
+    }
+  }
+  throw new Error(`All Gemini keys and models are at their limit right now. Your chapter is saved; try again in a minute or switch to Google Translate.${lastError ? ` (${lastError.slice(0, 120)})` : ""}`);
+}
+
+const toParagraphs = (text: string, url: string) => cleanChapterParagraphs(text.split(/\n+/).map((p) => p.trim()).filter(Boolean), url);
+const chapterKey = (book: Book, idx: number) => `ch:${book.id}:${idx}:single-page-v2`;
+
+// Translate one page now (callers hold the queue). Gemini sends up to ~8,000 characters per request.
+async function translateOneNow(book: Book, idx: number, ch: Chapter, settings: TranslateSettings): Promise<Chapter> {
+  const url = book.chapters[idx]?.url ?? book.url;
+  const key = chapterKey(book, idx);
+  const saved = await get<Chapter>(key);
+  if (saved?.translated?.length) {
+    const cleaned = cleanChapter(saved, url);
+    if (cleaned !== saved) await set(key, cleaned);
+    return cleaned;
+  }
+  const source = ch.paragraphs.join("\n\n");
+  const chunks = splitTranslationText(source, settings.engine === "google" ? 1000 : GEMINI_BATCH_CHARS);
+  const checkpointKey = `translation:${key}:${settings.engine}:${settings.model}`;
+  const checkpoint = await get<{ source: string; output: string[] }>(checkpointKey);
+  const out = checkpoint?.source === source ? checkpoint.output : [];
+  for (let n = out.length; n < chunks.length; n++) {
+    const chunk = chunks[n];
+    if (chunk === undefined) continue;
+    let text: string;
+    if (settings.engine === "google") {
+      if (n > 0) await new Promise<void>((resolve) => setTimeout(resolve, 500));
+      text = await translateWithGoogle(chunk);
+    } else {
+      const r = await geminiTranslate(chunk, settings);
+      // Safety-blocked or cut-off text falls back to Google Translate so the page still reads.
+      text = "text" in r ? r.text : await translateWithGoogle(chunk);
+    }
+    if (!text.trim()) throw new Error("No translation returned. Your original chapter is saved.");
+    out.push(text);
+    await set(checkpointKey, { source, output: out });
+  }
+  const updated = { ...ch, translated: toParagraphs(out.join("\n\n"), url) };
+  await set(key, updated);
+  await del(checkpointKey);
+  return updated;
+}
+
+// One browser-wide queue prevents chapter opens and bulk jobs from flooding Google or Gemini.
 let translationQueue: Promise<unknown> = Promise.resolve();
 const pendingTranslations = new Map<string, Promise<Chapter>>();
-export function translateChapter(book: Book, idx: number, ch: Chapter, settings = getTranslateSettings()): Promise<Chapter> {
-  const url = book.chapters[idx]?.url ?? book.url;
-  ch = cleanChapter(ch, url);
-  const key = `ch:${book.id}:${idx}:single-page-v2`;
-  const jobKey = `${key}:${settings.engine}:${settings.model}`;
-  const pending = pendingTranslations.get(jobKey);
-  if (pending) return pending;
-  const task = translationQueue.catch(() => {}).then(async () => {
-    const saved = await get<Chapter>(key);
-    if (saved?.translated?.length) {
-      const cleaned = cleanChapter(saved, url);
-      if (cleaned !== saved) await set(key, cleaned);
-      return cleaned;
-    }
-    const chunks = splitTranslationText(ch.paragraphs.join("\n\n"), settings.engine === "google" ? 1000 : 2500);
-    const checkpointKey = `translation:${jobKey}`;
-    const checkpoint = await get<{ source: string; output: string[] }>(checkpointKey);
-    const source = ch.paragraphs.join("\n\n");
-    const out = checkpoint?.source === source ? checkpoint.output : [];
-    for (let n = out.length; n < chunks.length; n++) {
-      const chunk = chunks[n];
-      if (chunk === undefined) continue;
-      if (settings.engine === "google" && n > 0) await new Promise<void>((resolve) => setTimeout(resolve, 500));
-      const r = settings.engine === "google" ? { text: await translateWithGoogle(chunk) } : await translateText({ data: { text: chunk, ...settings } });
-      if (!r.text.trim()) throw new Error("No translation returned. Your original chapter is saved.");
-      out.push(r.text);
-      await set(checkpointKey, { source, output: out });
-    }
-    const translated = cleanChapterParagraphs(out.join("\n\n").split(/\n+/).map((p) => p.trim()).filter(Boolean), url);
-    const updated = { ...ch, translated };
-    await set(key, updated);
-    await del(checkpointKey);
-    return updated;
-  });
-  translationQueue = task;
+const enqueue = <T,>(fn: () => Promise<T>): Promise<T> => { const task = translationQueue.catch(() => {}).then(fn); translationQueue = task; return task; };
+const jobKeyFor = (book: Book, idx: number, s: TranslateSettings) => `${chapterKey(book, idx)}:${s.engine}:${s.model}`;
+function track(jobKey: string, task: Promise<Chapter>) {
   pendingTranslations.set(jobKey, task);
-  const clear = () => { pendingTranslations.delete(jobKey); };
+  const clear = () => { if (pendingTranslations.get(jobKey) === task) pendingTranslations.delete(jobKey); };
   task.then(clear, clear);
   return task;
+}
+
+export function translateChapter(book: Book, idx: number, ch: Chapter, settings = getTranslateSettings()): Promise<Chapter> {
+  ch = cleanChapter(ch, book.chapters[idx]?.url ?? book.url);
+  const jobKey = jobKeyFor(book, idx, settings);
+  const pending = pendingTranslations.get(jobKey);
+  if (pending) return pending;
+  return track(jobKey, enqueue(() => translateOneNow(book, idx, ch, settings)));
+}
+
+/**
+ * Translates several pages. With Gemini, short pages are packed together (up to ~8,000 characters)
+ * so one request covers several pages; a batch that comes back incomplete is redone page by page.
+ */
+export async function translateChapters(book: Book, items: { idx: number; ch: Chapter }[], settings = getTranslateSettings(), onDone?: (done: number) => void): Promise<Map<number, Chapter>> {
+  const results = new Map<number, Chapter>();
+  let done = 0;
+  const finish = (idx: number, c: Chapter) => { results.set(idx, c); onDone?.(++done); };
+  const todo: { idx: number; ch: Chapter; text: string }[] = [];
+  for (const { idx, ch } of items) {
+    if (ch.translated?.length) { finish(idx, ch); continue; }
+    const cleaned = cleanChapter(ch, book.chapters[idx]?.url ?? book.url);
+    todo.push({ idx, ch: cleaned, text: cleaned.paragraphs.join("\n\n") });
+  }
+  if (settings.engine === "google") {
+    for (const p of todo) finish(p.idx, await translateChapter(book, p.idx, p.ch, settings));
+    return results;
+  }
+  for (const batch of packPages(todo)) {
+    const fresh = batch.filter((p) => !pendingTranslations.has(jobKeyFor(book, p.idx, settings)));
+    for (const p of batch) if (!fresh.includes(p)) finish(p.idx, await (pendingTranslations.get(jobKeyFor(book, p.idx, settings)) as Promise<Chapter>));
+    if (!fresh.length) continue;
+    if (fresh.length === 1) { const p = fresh[0]!; finish(p.idx, await translateChapter(book, p.idx, p.ch, settings)); continue; }
+    const work = enqueue(async () => {
+      const out = new Map<number, Chapter>();
+      const waiting = [];
+      for (const p of fresh) { const saved = await get<Chapter>(chapterKey(book, p.idx)); if (saved?.translated?.length) out.set(p.idx, saved); else waiting.push(p); }
+      if (waiting.length > 1) {
+        const r = await geminiTranslate(buildBatchText(waiting.map((p) => p.text)), settings, true);
+        const parts = "text" in r ? splitBatchOutput(r.text, waiting.length) : null;
+        if (parts) {
+          for (let k = 0; k < waiting.length; k++) {
+            const p = waiting[k]!;
+            const updated = { ...p.ch, translated: toParagraphs(parts[k] ?? "", book.chapters[p.idx]?.url ?? book.url) };
+            await set(chapterKey(book, p.idx), updated);
+            out.set(p.idx, updated);
+          }
+        }
+      }
+      for (const p of waiting) if (!out.has(p.idx)) out.set(p.idx, await translateOneNow(book, p.idx, p.ch, settings));
+      return out;
+    });
+    for (const p of fresh) track(jobKeyFor(book, p.idx, settings), work.then((m) => m.get(p.idx) as Chapter));
+    const out = await work;
+    for (const p of fresh) finish(p.idx, out.get(p.idx) as Chapter);
+  }
+  return results;
 }
 
 export async function listBooks(): Promise<Book[]> {
