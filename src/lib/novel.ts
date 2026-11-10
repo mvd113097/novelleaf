@@ -10,7 +10,7 @@ export type Book = { id: string; url: string; title: string; author?: string | u
 
 /** Name shown for a book: the reader's own name, else the English translation, else the original. */
 export const bookTitle = (b: Pick<Book, "title" | "titleEn" | "customTitle">) => b.customTitle?.trim() || b.titleEn?.trim() || b.title;
-export type Chapter = { title: string; paragraphs: string[]; translated?: string[] };
+export type Chapter = { title: string; paragraphs: string[]; translated?: string[]; translationEngine?: "google" | "gemini" };
 
 function cleanChapter(ch: Chapter, url: string): Chapter {
   const paragraphs = cleanChapterParagraphs(ch.paragraphs, url);
@@ -167,6 +167,10 @@ export async function renameBook(book: Book, name: string): Promise<Book> {
 }
 
 export const isCached = async (book: Book, idx: number) => !!(await get(`ch:${book.id}:${idx}:single-page-v2`));
+export async function getChapterTranslationStatus(book: Book, idx: number): Promise<{ translated: boolean; engine?: "google" | "gemini" }> {
+  const chapter = await get<Chapter>(chapterKey(book, idx));
+  return { translated: !!chapter?.translated?.length, ...(chapter?.translationEngine ? { engine: chapter.translationEngine } : {}) };
+}
 
 // Keys or models that hit a limit rest for a while; the next key, then the next model, is used.
 const cooldowns = new Map<string, number>();
@@ -231,7 +235,7 @@ async function translateOneNow(book: Book, idx: number, ch: Chapter, settings: T
     out.push(text);
     await set(checkpointKey, { source, output: out });
   }
-  const updated = { ...ch, translated: toParagraphs(out.join("\n\n"), url) };
+  const updated = { ...ch, translated: toParagraphs(out.join("\n\n"), url), translationEngine: settings.engine };
   await set(key, updated);
   await del(checkpointKey);
   return updated;
@@ -261,10 +265,15 @@ export function translateChapter(book: Book, idx: number, ch: Chapter, settings 
  * Translates several pages. With Gemini, short pages are packed together (up to ~8,000 characters)
  * so one request covers several pages; a batch that comes back incomplete is redone page by page.
  */
-export async function translateChapters(book: Book, items: { idx: number; ch: Chapter }[], settings = getTranslateSettings(), onDone?: (done: number) => void): Promise<Map<number, Chapter>> {
+export class TranslationCancelledError extends Error {
+  constructor() { super("Translation stopped."); this.name = "TranslationCancelledError"; }
+}
+
+export async function translateChapters(book: Book, items: { idx: number; ch: Chapter }[], settings = getTranslateSettings(), onDone?: (done: number, idx: number) => void, shouldContinue: () => boolean = () => true): Promise<Map<number, Chapter>> {
   const results = new Map<number, Chapter>();
   let done = 0;
-  const finish = (idx: number, c: Chapter) => { results.set(idx, c); onDone?.(++done); };
+  const finish = (idx: number, c: Chapter) => { results.set(idx, c); onDone?.(++done, idx); };
+  const checkContinue = () => { if (!shouldContinue()) throw new TranslationCancelledError(); };
   const todo: { idx: number; ch: Chapter; text: string }[] = [];
   for (const { idx, ch } of items) {
     if (ch.translated?.length) { finish(idx, ch); continue; }
@@ -272,10 +281,11 @@ export async function translateChapters(book: Book, items: { idx: number; ch: Ch
     todo.push({ idx, ch: cleaned, text: cleaned.paragraphs.join("\n\n") });
   }
   if (settings.engine === "google") {
-    for (const p of todo) finish(p.idx, await translateChapter(book, p.idx, p.ch, settings));
+    for (const p of todo) { checkContinue(); finish(p.idx, await translateChapter(book, p.idx, p.ch, settings)); }
     return results;
   }
   for (const batch of packPages(todo)) {
+    checkContinue();
     const fresh = batch.filter((p) => !pendingTranslations.has(jobKeyFor(book, p.idx, settings)));
     for (const p of batch) if (!fresh.includes(p)) finish(p.idx, await (pendingTranslations.get(jobKeyFor(book, p.idx, settings)) as Promise<Chapter>));
     if (!fresh.length) continue;
@@ -290,7 +300,7 @@ export async function translateChapters(book: Book, items: { idx: number; ch: Ch
         if (parts) {
           for (let k = 0; k < waiting.length; k++) {
             const p = waiting[k]!;
-            const updated = { ...p.ch, translated: toParagraphs(parts[k] ?? "", book.chapters[p.idx]?.url ?? book.url) };
+            const updated = { ...p.ch, translated: toParagraphs(parts[k] ?? "", book.chapters[p.idx]?.url ?? book.url), translationEngine: settings.engine };
             await set(chapterKey(book, p.idx), updated);
             out.set(p.idx, updated);
           }
