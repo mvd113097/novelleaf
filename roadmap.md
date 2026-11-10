@@ -16,3 +16,4 @@
 - [x] Allow smaller reader text down to 8px and verify saved preferences.
 - [x] Download "Save all offline"/export pages 6 at a time with retries; keep translation one at a time.
 - [x] Support fuxsb.com links (page 1 + numbered pages) and verify 52shuku, dmxs and fuxsb imports.
+- [x] Gemini: pack short pages into ~8,000-character requests, rotate multiple keys, fall back to other models, and use Google for safety-blocked pages.
